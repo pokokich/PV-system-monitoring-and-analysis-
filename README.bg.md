@@ -58,7 +58,7 @@ Deye пази подробната 5-минутна история около **
    - **macOS**: премести *PV Monitor.app* в *Applications*. Приложението не е подписано от Apple, затова първия път
      **десен бутон → Open → Open** (или System Settings → Privacy & Security → *Open Anyway*).
    - **Windows**: пусни *PV Monitor.exe*. При предупреждение от SmartScreen: *More info → Run anyway*.
-3. В лентата с менюта / системния трей се появява слънце и браузърът отваря `http://127.0.0.1:8088/setup`.
+3. В лентата с менюта / системния трей се появява слънце и браузърът отваря `http://127.0.0.1:8088/setup` (или 8089, 8090…, ако 8088 е зает от друга програма; `PVMON_PORT` фиксира порта).
 4. Мини през [първоначалната настройка](#първоначална-настройка). В менюто на иконата включи **Start at login**.
 
 Данните са в `~/Library/Application Support/PV Monitor` (macOS) или `%APPDATA%\PV Monitor` (Windows): базата

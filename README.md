@@ -63,7 +63,7 @@ Starting it at least once a month is enough to keep the full history; running it
      Open → Open** (or System Settings → Privacy & Security → *Open Anyway*).
    - **Windows**: open the folder and run *PV Monitor.exe*. SmartScreen may warn about an unknown publisher: *More info →
      Run anyway*.
-3. A sun icon appears in the menu bar / system tray and the browser opens `http://127.0.0.1:8088/setup`.
+3. A sun icon appears in the menu bar / system tray and the browser opens `http://127.0.0.1:8088/setup` (or 8089, 8090… when another program already uses 8088; set `PVMON_PORT` to fix the port).
 4. Follow the [first-run setup](#first-run-setup). In the tray menu, tick **Start at login**, so the data keeps coming.
 
 Data lives in `~/Library/Application Support/PV Monitor` (macOS) or `%APPDATA%\PV Monitor` (Windows): the database
