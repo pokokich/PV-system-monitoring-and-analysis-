@@ -1,0 +1,392 @@
+{% extends "base.html" %}
+{% block title %}Цели{% endblock %}
+{% block filters %}{% endblock %}
+{% block content %}
+<h1>Цели и бенчмаркове</h1>
+<p class="lead">Всяка цел е KPI, период и целева стойност. Статусът се смята от данните до последния ден и от прогнозата за края на периода
+  по сезонния профил на последните 12 месеца (дните преди разширение са приведени към сегашната система: <b>{{ brand_line }}</b>).
+  Стойностите по подразбиране са стартови предложения; смени ги с бутона „Промени“.</p>
+
+<h2 class="section">Цели</h2>
+<div class="status-strip" id="strip"></div>
+
+<div class="goal-grid" id="goals"></div>
+<p><button type="button" class="btn" id="add-goal">+ Нова цел</button></p>
+<dialog id="goal-dialog">
+  <form method="dialog" id="goal-form" class="form">
+    <h2 id="goal-form-title">Цел</h2>
+    <label>KPI <select name="kpi_id" required></select></label>
+    <label>Име <input name="title" maxlength="120"></label>
+    <div class="row">
+      <label>Период <select name="period_type"></select></label>
+      <label data-for="year month custom">От (ГГГГ или ГГГГ-ММ-ДД, празно = текущата) <input name="period_start" placeholder="текущата"></label>
+      <label data-for="custom">До <input name="period_end" placeholder="ГГГГ-ММ-ДД"></label>
+    </div>
+    <div class="row">
+      <label>Посока <select name="direction"><option value="ge">поне (≥)</option><option value="le">най-много (≤)</option></select></label>
+      <label>Цел <input name="target" type="number" step="any" required></label>
+      <label>Праг за риск <input name="warn_level" type="number" step="any"></label>
+    </div>
+    <label data-for-kpi="F04">Сценарий <select name="scenario"></select></label>
+    <label>Бележка <input name="note" maxlength="500"></label>
+    <label class="check"><input type="checkbox" name="active" checked> активна</label>
+    <p class="form-error" id="goal-error"></p>
+    <div class="actions">
+      <button type="button" class="btn danger" id="goal-delete">Изтрий</button>
+      <span style="flex:1"></span>
+      <button type="button" class="btn" value="cancel" id="goal-cancel">Отказ</button>
+      <button type="submit" class="btn primary">Запази</button>
+    </div>
+  </form>
+</dialog>
+
+<h2 class="section">Окупаемост по сценарии</h2>
+<div class="card">
+  <div class="card-head"><h2>Сценарии</h2><span class="code">F04 F05 F06</span></div>
+  <p class="subtitle">Прогноза от днес: средна нетна полза по месеци (приведена към разширението), с поскъпване на тока и деградация на панелите.
+    Подмяната на батерия и инвертор се смята само ако има въведена цена. Графиката е на страница <a href="/economics">Икономика</a>.</p>
+  <div class="table-wrap" style="max-height:none"><table class="data scen" id="scenarios"></table></div>
+  <p class="form-error" id="scen-error"></p>
+</div>
+
+<h2 class="section">Бенчмаркове</h2>
+<div class="tiles" id="bench-tiles"></div>
+<div class="card">
+  <div class="card-head"><h2>Производство спрямо очакваното</h2><span class="code">E01 U06 P04</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle">kWh по месеци: реалното PV и оценката за пропуснатото при пълна батерия, спрямо PVGIS за масивите, работили в месеца</p>
+  <div class="chart tall" id="c-yield"></div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Масивите спрямо PVGIS</h2><span class="code">P04</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">%, реално производство на стринга / PVGIS за масива (от инверторните данни, ~90 дни назад)</p>
+    <div class="chart" id="c-arrays"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Нетна полза спрямо плана</h2><span class="code">F01 F10</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle" id="plan-sub">{{ ccy }} по месеци</p>
+    <div class="chart" id="c-plan"></div>
+  </div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Облъчване</h2><span class="code">C02</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">kWh/m² по месеци, хоризонтално (Open-Meteo)</p>
+    <div class="chart short" id="c-ghi"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Performance Ratio</h2><span class="code">P03</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">%, реално PV / облъчване в равнината на масивите × kWp; ограничаването при пълна батерия го намалява</p>
+    <div class="chart short" id="c-pr"></div>
+  </div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Performance Ratio по час</h2><span class="code">P06 U06</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">%, калибриран в часове без пълна батерия; с него се смята пропуснатата енергия. Спад в някои часове обикновено е сянка.</p>
+    <div class="chart short" id="c-prh"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Бизнес план и параметри</h2><span class="code">F10 U06</span></div>
+    <p class="subtitle">План за нетната полза по месеци, {{ ccy }}, например от офертата или бизнес плана; без план целта F10 няма стойност.</p>
+    <form id="plan-form" class="form plan"></form>
+    <form id="param-form" class="form"></form>
+    <p class="form-error" id="plan-error"></p>
+  </div>
+</div>
+<div class="note box" id="method"></div>
+{% endblock %}
+{% block script %}
+const M1 = {{ mppt1|tojson }}, M2 = {{ mppt2|tojson }};
+const MONTH_NAMES = ["януари", "февруари", "март", "април", "май", "юни", "юли", "август", "септември", "октомври", "ноември", "декември"];
+const ICON = { met: "✓", on_track: "✓", at_risk: "!", behind: "✕", no_data: "–" };
+let G = null;
+
+function fmtVal(v, unit) {
+  if (v === null || v === undefined) return "–";
+  const d = unit === "%" ? 1 : unit === "години" ? 1 : unit === "kWh/kWp" ? 0 : 0;
+  return PV.num(v, d);
+}
+function periodText(g) {
+  const c = g.current;
+  if (g.kpi_id === "F04") return `от пускането, сценарий ${g.scenario || "base"}`;
+  if (g.period_type === "rolling12") return `последните 12 месеца (${PV.fmtDate(c.start)} – ${PV.fmtDate(c.as_of)})`;
+  if (g.period_type === "ltd") return `от пускането (${PV.fmtDate(c.start)})`;
+  return `${PV.fmtDate(c.start)} – ${PV.fmtDate(c.end)}${g.period_start ? "" : " (текущата година)"}`.replace("(текущата година)", g.period_type === "month" ? "(текущият месец)" : "(текущата година)");
+}
+function badge(status, label) {
+  return `<span class="badge s-${status}"><span class="ico" aria-hidden="true">${ICON[status]}</span>${PV.esc(label)}</span>`;
+}
+
+function renderGoals() {
+  const box = document.getElementById("goals");
+  box.innerHTML = "";
+  const counts = {};
+  G.goals.filter((g) => g.active).forEach((g) => { counts[g.current.status] = (counts[g.current.status] || 0) + 1; });
+  document.getElementById("strip").innerHTML = ["met", "on_track", "at_risk", "behind", "no_data"].filter((s) => counts[s])
+    .map((s) => `${badge(s, G.statuses[s])} <b>${counts[s]}</b>`).join(" &nbsp; ");
+  G.goals.forEach((g, i) => {
+    const c = g.current, unit = g.unit;
+    const card = document.createElement("div");
+    card.className = "card goal" + (g.active ? "" : " inactive");
+    const sign = g.direction === "ge" ? "≥" : "≤";
+    const showFc = c.has_end && !c.ended;
+    card.innerHTML = `
+      <div class="card-head"><h2></h2><span class="code">${PV.esc(g.kpi_id)}</span><button type="button" data-edit>Промени</button></div>
+      <p class="subtitle">${PV.esc(periodText(g))}</p>
+      <div class="goal-row">
+        <div><div class="label">${g.kpi_id === "F04" ? "прогноза" : c.ended ? "резултат" : "досега"}</div>
+          <div class="big">${fmtVal(c.actual, unit)}<span class="unit">${PV.esc(unit)}</span></div></div>
+        ${showFc ? `<div><div class="label">прогноза за края</div><div class="big muted">${fmtVal(c.forecast, unit)}<span class="unit">${PV.esc(unit)}</span></div></div>` : ""}
+        <div><div class="label">цел</div><div class="big muted">${sign} ${fmtVal(g.target, unit)}<span class="unit">${PV.esc(unit)}</span></div>
+          <div class="sub">риск под ${g.warn_level === null ? "–" : fmtVal(g.warn_level, unit)}</div></div>
+        <div class="goal-status">${g.active ? badge(c.status, g.status_label) : badge("no_data", "неактивна")}</div>
+      </div>
+      ${g.kpi_id === "F04" && c.date ? `<div class="sub">кога: ${PV.fmtDate(c.date)}; възвърнато досега ${PV.num(c.progress, 1)}%</div>` : ""}
+      <div class="chart mini" id="gc-${i}"></div>
+      ${g.note ? `<p class="note">${PV.esc(g.note)}</p>` : ""}`;
+    card.querySelector("h2").textContent = g.title || g.kpi_name;
+    card.querySelector("[data-edit]").addEventListener("click", () => openForm(g));
+    box.appendChild(card);
+    const h = g.history.filter((x) => x.actual !== null || x.forecast !== null);
+    if (!h.length) return;
+    const x = h.map((p) => p.as_of);
+    PV.chart(`gc-${i}`, (t) => PV.base(t, {
+      grid: { left: 8, right: 56, top: 24, bottom: 8, containLabel: true },
+      legend: PV.legend(t, { textStyle: { color: t.text2, fontSize: 11 } }),
+      tooltip: PV.tooltip(t, () => unit, unit === "%" || unit === "години" ? 1 : 0, (v) => `към ${PV.fmtDate(v)}`),
+      xAxis: PV.catAxis(t, x, { axisLabel: { formatter: (v) => PV.label(v.slice(0, 7)) } }),
+      yAxis: PV.valueAxis(t, "", { scale: true }),
+      series: [
+        PV.line(g.kpi_id === "F04" ? "Прогноза (години)" : "Досега", h.map((p) => p.actual), t.load, { showSymbol: h.length < 3 }),
+        ...(c.has_end ? [PV.line("Прогноза за края", h.map((p) => p.forecast), t.load, { lineStyle: { width: 2, color: t.load, type: [6, 4] }, showSymbol: h.length < 3 })] : []),
+        PV.line("_цел", h.map(() => g.target), t.muted, { lineStyle: { width: 1, color: t.muted }, silent: true,
+          endLabel: { show: true, formatter: "цел", color: t.muted, fontSize: 11 } }),
+      ],
+    }));
+  });
+}
+
+// ------------------------------------------------------------ goal form
+const dlg = document.getElementById("goal-dialog"), form = document.getElementById("goal-form");
+let editing = null;
+function fillSelects() {
+  form.kpi_id.innerHTML = G.kpis.map((k) => `<option value="${k.id}">${k.id} · ${PV.esc(k.name)} (${PV.esc(k.unit)})</option>`).join("");
+  form.period_type.innerHTML = Object.entries(G.period_types).map(([k, v]) => `<option value="${k}">${PV.esc(v)}</option>`).join("");
+  form.scenario.innerHTML = G.scenarios.map((s) => `<option value="${s.name}">${PV.esc(s.label)}</option>`).join("");
+}
+function syncForm() {
+  const pt = form.period_type.value, kpi = form.kpi_id.value;
+  form.querySelectorAll("[data-for]").forEach((el) => { el.hidden = !el.dataset.for.split(" ").includes(pt) || kpi === "F04"; });
+  form.querySelectorAll("[data-for-kpi]").forEach((el) => { el.hidden = el.dataset.forKpi !== kpi; });
+  form.period_type.disabled = kpi === "F04";
+}
+function openForm(g) {
+  editing = g || null;
+  document.getElementById("goal-form-title").textContent = g ? "Промяна на цел" : "Нова цел";
+  document.getElementById("goal-error").textContent = "";
+  document.getElementById("goal-delete").hidden = !g;
+  const v = g || { kpi_id: "U02", title: "", period_type: "year", period_start: "", period_end: "", direction: "ge",
+    target: "", warn_level: "", scenario: "base", note: "", active: 1 };
+  for (const k of ["kpi_id", "title", "period_type", "period_start", "period_end", "direction", "target", "warn_level", "scenario", "note"]) {
+    form[k].value = v[k] ?? "";
+  }
+  form.active.checked = !!v.active;
+  syncForm();
+  dlg.showModal();
+}
+form.kpi_id.addEventListener("change", () => {
+  const k = G.kpis.find((x) => x.id === form.kpi_id.value);
+  if (k) form.direction.value = k.direction;
+  if (form.kpi_id.value === "F04") form.period_type.value = "ltd";
+  syncForm();
+});
+form.period_type.addEventListener("change", syncForm);
+document.getElementById("add-goal").addEventListener("click", () => openForm(null));
+document.getElementById("goal-cancel").addEventListener("click", () => dlg.close());
+async function send(method, path, body) {
+  const res = await fetch(`/api/${path}`, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = await res.json(); msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch (e) { /* not json */ }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+const numOrNull = (v) => (v === "" || v === null || v === undefined ? null : Number(v));
+form.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const body = {
+    kpi_id: form.kpi_id.value, title: form.title.value || null, period_type: form.kpi_id.value === "F04" ? "ltd" : form.period_type.value,
+    period_start: form.period_start.value || null, period_end: form.period_end.value || null,
+    direction: form.direction.value, target: Number(form.target.value), warn_level: numOrNull(form.warn_level.value),
+    scenario: form.kpi_id.value === "F04" ? form.scenario.value : null, note: form.note.value || null, active: form.active.checked,
+  };
+  try {
+    await (editing ? send("PUT", `goals/${editing.id}`, body) : send("POST", "goals", body));
+    dlg.close();
+    await load();
+  } catch (e) { document.getElementById("goal-error").textContent = `Не е записано: ${e.message}`; }
+});
+document.getElementById("goal-delete").addEventListener("click", async () => {
+  if (!editing || !confirm(`Да изтрия ли целта „${editing.title}“?`)) return;
+  try { await send("DELETE", `goals/${editing.id}`); dlg.close(); await load(); }
+  catch (e) { document.getElementById("goal-error").textContent = `Не е изтрита: ${e.message}`; }
+});
+
+// ------------------------------------------------------------ scenarios
+const SC_FIELDS = [
+  ["price_escalation_pct", "Поскъпване на тока, %/год"], ["degradation_pct", "Деградация, %/год"],
+  ["battery_replacement_year", "Подмяна на батерията, година"], ["battery_replacement_ccy", "… цена, {{ ccy }}"],
+  ["inverter_replacement_year", "Подмяна на инвертора, година"], ["inverter_replacement_ccy", "… цена, {{ ccy }}"],
+  ["discount_rate_pct", "Дисконтова ставка, %"],
+];
+function renderScenarios() {
+  const t = document.getElementById("scenarios");
+  const sc = G.scenarios;
+  let html = `<thead><tr><th></th>${sc.map((s) => `<th>${PV.esc(s.label)}</th>`).join("")}</tr></thead><tbody>`;
+  for (const [k, lbl] of SC_FIELDS) {
+    html += `<tr><td>${PV.esc(lbl)}</td>${sc.map((s) => `<td><input type="number" step="any" data-sc="${s.name}" data-k="${k}" value="${s[k] ?? ""}" placeholder="няма"></td>`).join("")}</tr>`;
+  }
+  const res = [
+    ["Годишна нетна полза сега", (p) => `${PV.num(p.annual, 0)} {{ ccy }}`],
+    ["Окупаемост от пускането", (p) => p.years ? `${PV.num(p.years, 1)} г.` : "над 40 г."],
+    ["Дата на окупаемост", (p) => PV.fmtDate(p.date)],
+    ["Дисконтирана окупаемост", (p) => p.discounted_years ? `${PV.num(p.discounted_years, 1)} г. (${PV.fmtDate(p.discounted_date)})` : "над 40 г."],
+  ];
+  for (const [lbl, f] of res) html += `<tr class="result"><td>${PV.esc(lbl)}</td>${sc.map((s) => `<td><b>${PV.esc(f(s.payback))}</b></td>`).join("")}</tr>`;
+  html += `<tr><td></td>${sc.map((s) => `<td><button type="button" class="btn" data-save="${s.name}">Запази</button></td>`).join("")}</tr></tbody>`;
+  t.innerHTML = html;
+  t.querySelectorAll("[data-save]").forEach((b) => b.addEventListener("click", async () => {
+    const name = b.dataset.save, s = G.scenarios.find((x) => x.name === name);
+    const body = { note: s.note };
+    t.querySelectorAll(`[data-sc="${name}"]`).forEach((inp) => { body[inp.dataset.k] = numOrNull(inp.value); });
+    body.price_escalation_pct = body.price_escalation_pct ?? 0;
+    body.degradation_pct = body.degradation_pct ?? 0;
+    try { await send("PUT", `scenarios/${name}`, body); document.getElementById("scen-error").textContent = ""; await load(); }
+    catch (e) { document.getElementById("scen-error").textContent = `Не е записано: ${e.message}`; }
+  }));
+}
+
+// ------------------------------------------------------------ plan and params
+function renderPlan() {
+  const plan = {};
+  G.benchmarks.filter((b) => b.kind === "plan" && b.kpi_id === "F01").forEach((b) => { plan[+b.period] = b.value; });
+  const f = document.getElementById("plan-form");
+  f.innerHTML = MONTH_NAMES.map((n, i) => `<label>${n.slice(0, 3)} <input type="number" step="any" name="m${i + 1}" value="${plan[i + 1] ?? ""}"></label>`).join("") +
+    `<div class="actions"><span class="sub">годишно ${PV.num(Object.values(plan).reduce((a, b) => a + b, 0), 0)} {{ ccy }}</span><span style="flex:1"></span><button type="submit" class="btn">Запази плана</button></div>`;
+  f.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const months = {};
+    for (let i = 1; i <= 12; i++) months[i] = numOrNull(f[`m${i}`].value);
+    try { await send("PUT", "plan", { months, note: "въведен от собственика" }); document.getElementById("plan-error").textContent = ""; await load(); }
+    catch (e) { document.getElementById("plan-error").textContent = `Не е записано: ${e.message}`; }
+  };
+  const pf = document.getElementById("param-form");
+  pf.innerHTML = G.params.map((p) => `<label title="${PV.esc(p.note || "")}">Стойност на пропуснатата енергия, ${PV.esc(p.unit || "")}
+    <input type="number" step="any" name="${PV.esc(p.key)}" value="${p.value ?? ""}"></label>`).join("") +
+    `<div class="actions"><span class="sub">ако имаше договор за продажба: изкупната цена за kWh; 0 = не се остойностява</span><span style="flex:1"></span><button type="submit" class="btn">Запази</button></div>`;
+  pf.onsubmit = async (ev) => {
+    ev.preventDefault();
+    try {
+      for (const p of G.params) await send("PUT", `params/${p.key}`, { value: Number(pf[p.key].value) });
+      document.getElementById("plan-error").textContent = ""; await load();
+    } catch (e) { document.getElementById("plan-error").textContent = `Не е записано: ${e.message}`; }
+  };
+}
+
+// ------------------------------------------------------------ benchmark charts
+async function renderBench() {
+  const first = PV.first(), last = PV.last();
+  const [s, k] = await Promise.all([PV.api("series", { from: first, to: last, group: "month" }), PV.api("kpi", { from: first, to: last })]);
+  const rows = s.rows, x = rows.map((r) => r.label), K = k.kpis;
+  const ytd = await PV.api("kpi", { from: `${last.slice(0, 4)}-01-01`, to: last });
+  const Y = ytd.kpis;
+  PV.tiles("bench-tiles", [
+    { code: "P04", label: `Производство спрямо PVGIS, ${last.slice(0, 4)}`, value: PV.num(Y.P04.value, 0), unit: "%",
+      sub: `${PV.num(ytd.totals.pv, 0)} от ${PV.num(ytd.totals.exp_pvgis, 0)} kWh` },
+    { code: "U06", label: "Пропусната енергия от пускането", value: PV.num(K.U06.value, 0), unit: "kWh", conditional: true,
+      sub: `${PV.num(K.U06p.value, 1)}% от възможното · ~${PV.num(K.U06v.value, 0)} {{ ccy }} при договор` },
+    { code: "P03", label: "Коефициент на ефективност (PR) от пускането", value: PV.num(K.P03.value, 0), unit: "%", sub: "по облъчването от Open-Meteo" },
+    { code: "C02", label: "Слънчево облъчване от пускането", value: PV.num(K.C02.value, 0), unit: "kWh/m²", sub: "хоризонтално" },
+    { code: "F10", label: "Нетна полза спрямо плана", value: PV.num(K.F10.value, 0), unit: "%", sub: `${PV.num(k.totals.benefit, 0)} от ${PV.num(k.totals.plan, 0)} {{ ccy }} по плана` },
+  ]);
+  PV.chart("c-yield", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: PV.tooltip(t, () => "kWh", 0),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "kWh"),
+    series: [
+      PV.stackBar(t, "Реално PV", rows.map((r) => r.pv), t.pv),
+      PV.stackBar(t, "Пропуснато (пълна батерия)", rows.map((r) => r.curtailed), t.axis),
+      PV.line("PVGIS очакване", rows.map((r) => r.exp_pvgis), t.text2, { showSymbol: true, symbolSize: 6 }),
+    ],
+  }));
+  const arr = rows.filter((r) => r.p04_roof !== null || r.p04_carport !== null);
+  if (arr.length) {
+    PV.chart("c-arrays", (t) => PV.base(t, {
+      legend: PV.legend(t), tooltip: PV.tooltip(t, () => "%", 0),
+      xAxis: PV.catAxis(t, arr.map((r) => r.label)), yAxis: PV.valueAxis(t, "%", { min: 0 }),
+      series: [
+        PV.line(M1, arr.map((r) => r.p04_roof), t.roof, { showSymbol: true }),
+        PV.line(M2, arr.map((r) => r.p04_carport), t.carport, { showSymbol: true,
+          markLine: { silent: true, symbol: "none", lineStyle: { color: t.muted, width: 1, type: "solid" }, label: { color: t.muted, formatter: "100%" }, data: [{ yAxis: 100 }] } }),
+      ],
+    }));
+  } else PV.empty("c-arrays", "Няма данни по стрингове");
+  const pl = rows.filter((r) => r.plan);
+  document.getElementById("plan-sub").textContent = `{{ ccy }} по месеци с ДДС; F10 от пускането ${PV.num(K.F10.value, 0)}%`;
+  PV.chart("c-plan", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: PV.tooltip(t, () => "{{ ccy }}", 0),
+    xAxis: PV.catAxis(t, pl.map((r) => r.label)), yAxis: PV.valueAxis(t, "{{ ccy }}"),
+    series: [PV.bar("Нетна полза", pl.map((r) => r.benefit), t.money),
+             PV.line("План", pl.map((r) => r.plan), t.muted, { showSymbol: true, symbolSize: 6 })],
+  }));
+  const wx = rows.filter((r) => r.ghi !== null);
+  PV.chart("c-ghi", (t) => PV.base(t, {
+    tooltip: PV.tooltip(t, () => "kWh/m²", 0), grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+    xAxis: PV.catAxis(t, wx.map((r) => r.label)), yAxis: PV.valueAxis(t, "kWh/m²"),
+    series: [PV.bar("Облъчване", wx.map((r) => r.ghi), t.seq[2])],
+  }));
+  PV.chart("c-pr", (t) => PV.base(t, {
+    tooltip: PV.tooltip(t, () => "%", 0), grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+    xAxis: PV.catAxis(t, wx.map((r) => r.label)), yAxis: PV.valueAxis(t, "%", { min: 0 }),
+    series: [PV.line("PR", wx.map((r) => r.pr), t.pv, { showSymbol: true })],
+  }));
+  const prh = G.calibration.pr_hourly || {};
+  const hours = [...new Set(Object.values(prh).flatMap((o) => Object.keys(o).map(Number)))].sort((a, b) => a - b);
+  if (hours.length) {
+    PV.chart("c-prh", (t) => PV.base(t, {
+      legend: PV.legend(t), tooltip: PV.tooltip(t, () => "%", 0, (h) => `${h}:00–${+h + 1}:00`),
+      xAxis: PV.catAxis(t, hours.map(String), { axisLabel: { formatter: (v) => `${v}:00` } }), yAxis: PV.valueAxis(t, "%", { min: 0 }),
+      series: Object.entries(prh).map(([name, o]) => PV.line(name, hours.map((h) => o[h] !== undefined ? o[h] * 100 : null),
+        name === M2 ? t.carport : t.roof, { showSymbol: true })),
+    }));
+  } else PV.empty("c-prh", "Още няма облъчване от Open-Meteo");
+  const pr = G.calibration.pr || {};
+  document.getElementById("method").innerHTML = `
+    <b>PVGIS (P04).</b> Месечно производство за всеки масив от PVGIS 5.3 (база ${PV.esc((G.pvgis[0] || {}).radiation_db || "–")}) за координатите на станцията,
+    с наклон и азимут от таблицата с масивите и системните загуби от параметъра pvgis_loss_pct: ${[...new Map(G.pvgis.map((p) => [p.name, p])).values()].map((p) => `${PV.esc(p.name)} ${PV.num(p.tilt_deg, 0)}°, азимут ${PV.num((p.aspect_deg ?? 0) + 180, 0)}°`).join("; ") || "няма масиви с ориентация"}.
+    Годишно: ${Object.entries(G.pvgis.reduce((a, p) => { a[p.name] = (a[p.name] || 0) + p.kwh_per_kwp; return a; }, {})).map(([n, v]) => `${PV.esc(n)} ${PV.num(v, 0)} kWh/kWp`).join(", ")}.
+    PVGIS отчита релефа, но не и сградите и дърветата, затова местната сянка е в разликата.
+    <br><br><b>Облъчване (C02, P03).</b> Почасово от Open-Meteo (архив и прогнозен API за последните дни): хоризонтално и в равнината на всеки масив.
+    Калибриран PR в часове без пълна батерия: ${Object.entries(pr).map(([n, v]) => `${PV.esc(n)} ${PV.num(v * 100, 0)}%`).join(", ") || "–"}.
+    <br><br><b>Пропусната енергия (U06), оценка.</b> В 5-минутните интервали, в които SOC е поне 98% в началото и в края, инверторът при нулев износ
+    ограничава PV до консумацията. Пропуснатото е очакваното по облъчването (с калибрирания PR за масива и часа) минус реалното PV, сумирано по дни.
+    Облъчването от модела е с грешка за отделни часове (облаци, мъгла), но сумите за месец са надеждни.
+    <br><br><b>Прогнози за целите.</b> Средна стойност на ден за всеки календарен месец от последните 12 месеца. За дните преди разширение се добавя
+    очакваното производство на добавените масиви за същия ден: първо замества дневния внос, а остатъкът и ограниченото PV зареждат добавения
+    капацитет на батерията (над минималния SOC, 92% ефективност) за нощния внос. Месец без данни е средното на съседните.`;
+}
+
+async function load() {
+  G = await PV.api("goals");
+  fillSelects();
+  renderGoals();
+  renderScenarios();
+  renderPlan();
+  await renderBench();
+}
+document.addEventListener("DOMContentLoaded", async () => {
+  PV.setLoading(true);
+  try { await load(); } finally { PV.setLoading(false); }
+});
+{% endblock %}

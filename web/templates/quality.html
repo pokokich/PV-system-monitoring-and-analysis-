@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Качество на данните{% endblock %}
+{% block content %}
+<h1>Качество на данните</h1>
+<p class="lead">Колко от времето е покрито с кадри, кои интервали са с оценена PV мощност (замръзнали стойности на Deye) и как изчислената енергия се сверява с дневните суми на Deye.</p>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="card" id="guard">
+  <div class="card-head"><h2>Наблюдение и архив</h2></div>
+  <p class="subtitle">Проверки на всеки 5 минути (услугата guard): свежест на данните, грешки от Deye, ежедневен архив на базата, място на диска. Известия се пращат само ако в .env има Telegram, имейл или ntfy.</p>
+  <ul class="guard-list" id="guard-list"></ul>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Пълнота по дни</h2><span class="code">D01</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle">% от деня с интегрирани интервали</p>
+  <div class="chart short" id="c-cov"></div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Сверка с Deye по дни</h2><span class="code">E08 D04</span></div>
+  <p class="subtitle">kWh: изчислено от 5-минутните кадри / дневна сума на Deye (станция). При някои станции дневните суми на Deye в първите седмици са грешни; тогава важи изчисленото.</p>
+  <div class="table-wrap"><table class="data" id="t-check"></table></div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Последни заявки на колектора</h2></div>
+  <div class="table-wrap"><table class="data" id="t-ingest"></table></div>
+</div>
+{% endblock %}
+{% block script %}
+function table(id, head, rows) {
+  const tbl = document.getElementById(id);
+  tbl.innerHTML = "";
+  const tr = tbl.createTHead().insertRow();
+  head.forEach((h) => { const th = document.createElement("th"); th.textContent = h; tr.appendChild(th); });
+  const tb = tbl.createTBody();
+  rows.forEach((r) => { const row = tb.insertRow(); r.forEach((v) => { row.insertCell().textContent = v; }); });
+}
+async function guardCard() {
+  const g = await PV.api("status");
+  const ul = document.getElementById("guard-list");
+  ul.innerHTML = "";
+  const add = (cls, text) => { const li = document.createElement("li"); li.className = cls; li.textContent = text; ul.appendChild(li); };
+  if (!g.problems.length) add("ok", "Всичко е наред: данните идват и архивът е актуален.");
+  g.problems.forEach((p) => add(p.level, p.text));
+  add("info", g.backup_ts ? `Последен архив: ${new Date(g.backup_ts * 1000).toLocaleString(PV.locale)}` : "Още няма архив.");
+}
+guardCard();
+async function render(state) {
+  const [k, q] = await Promise.all([PV.api("kpi", PV.range()), PV.api("quality", PV.range())]);
+  const K = k.kpis;
+  PV.tiles("tiles", [
+    { code: "D01", label: "Пълнота на данните", value: PV.num(K.D01.value, 1), unit: "%" },
+    { code: "D02", label: "Интервали с оценено PV", value: PV.num(K.D02.value, 0), sub: "замръзнала PV мощност в Deye" },
+    { code: "D03", label: "Последен кадър на станцията", value: PV.num(q.station_age_min, 0), unit: "мин" },
+    { code: "D03", label: "Последен кадър на инвертора", value: PV.num(q.device_age_min, 0), unit: "мин" },
+    { code: "D05", label: "Невъзможни стойности", value: PV.num(K.D05.value, 0), sub: "SOC извън 0–100, отрицателен товар, PV нощем" },
+  ]);
+  const rows = q.rows;
+  PV.chart("c-cov", (t) => PV.base(t, {
+    tooltip: PV.tooltip(t, () => "%", 1), grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+    xAxis: PV.catAxis(t, rows.map((r) => r.day)), yAxis: PV.valueAxis(t, "%", { min: 0, max: 100 }),
+    series: [PV.bar("Пълнота", rows.map((r) => r.coverage), t.load)],
+  }));
+  const f = (a, b) => `${PV.num(a, 1)} / ${PV.num(b, 1)}`;
+  table("t-check", ["Ден", "Покритие, ч", "PV", "Консумация", "Внос", "Заряд", "Разряд"],
+    q.check.slice().reverse().map((c) => [PV.fmtDate(c.day), PV.num(c.covered_s / 3600, 1), f(c.pv_kwh, c.deye_pv_kwh),
+      f(c.load_kwh, c.deye_load_kwh), f(c.import_kwh, c.deye_import_kwh), f(c.charge_kwh, c.deye_charge_kwh), f(c.discharge_kwh, c.deye_discharge_kwh)]));
+  table("t-ingest", ["Време", "Задача", "Заявка", "Статус", "Точки", "Грешка"],
+    q.ingest.map((i) => [new Date(i.ts * 1000).toLocaleString(PV.locale, { timeZone: PV.tz }), i.job, i.endpoint || "", i.status, i.points ?? "", i.error || ""]));
+}
+document.addEventListener("DOMContentLoaded", () => {
+  PV.initFilters(async (s) => { PV.setLoading(true); try { await render(s); } finally { PV.setLoading(false); } });
+});
+{% endblock %}

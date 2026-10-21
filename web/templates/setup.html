@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}Първоначална настройка{% endblock %}
+{% block filters %}{% endblock %}
+{% block content %}
+<style>
+  .steps { counter-reset: step; display: flex; flex-direction: column; gap: 16px; max-width: 860px; }
+  .steps > section { counter-increment: step; }
+  .steps > section > .card-head h2::before { content: counter(step) ". "; color: var(--text-muted); }
+  .state { font-size: 13px; padding: 6px 10px; border-radius: 6px; background: var(--page); border-left: 3px solid var(--border); margin: 6px 0; }
+  .state.ok { border-left-color: var(--s-good); }
+  .state.warn { border-left-color: var(--s-warn); }
+  .how { font-size: 13px; color: var(--text-secondary); }
+  .how ol { padding-left: 20px; margin: 6px 0; }
+  .win-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+  .win-row label { flex: 0 1 110px !important; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px; }
+</style>
+
+<h1>Първоначална настройка</h1>
+<p class="lead">Четири стъпки, за да тръгне събирането на данни и дашбордът да смята с твоите цени и система. Всичко може да се промени
+  по-късно оттук или от <a href="/settings">Настройки</a>. Програмата само чете от Deye и никога не променя настройки на инвертора.</p>
+
+<div class="steps">
+  <section class="card" aria-labelledby="h-deye">
+    <div class="card-head"><h2 id="h-deye">Достъп до Deye Cloud</h2></div>
+    <div id="deye-state" class="state"></div>
+    <details class="how" id="deye-how">
+      <summary>Откъде са тези данни</summary>
+      <ol>
+        <li>Влез на <a href="https://developer.deyecloud.com" target="_blank" rel="noopener">developer.deyecloud.com</a> със същия акаунт, с който влизаш в приложението Deye Cloud.</li>
+        <li>Application → Create: създай приложение и му дай <b>само</b> правата за наблюдение (Station / Device monitoring). Не давай права за управление.</li>
+        <li>Копирай App ID и App Secret. Регионът е този на акаунта ти (Европа: EU).</li>
+      </ol>
+      Паролата се пази само на този компютър (data/secrets.json, достъп само за собственика) и не се изпраща никъде освен към Deye.
+    </details>
+    <form class="form" id="deye-form" autocomplete="off">
+      <div class="row">
+        <label>Имейл в Deye Cloud <input name="email" type="email" required autocomplete="username"></label>
+        <label>Парола <input name="password" type="password" required autocomplete="current-password"></label>
+      </div>
+      <div class="row">
+        <label>App ID <input name="app_id" required></label>
+        <label>App Secret <input name="app_secret" type="password" required></label>
+        <label>Регион <select name="region" id="deye-region"><option value="eu1">Европа (eu1)</option><option value="us1">Америка (us1)</option><option value="custom">друг адрес…</option></select></label>
+      </div>
+      <label id="deye-url-l" hidden>Адрес на API <input name="base_url" placeholder="https://xxx-developer.deyecloud.com/v1.0"></label>
+      <div class="actions"><button class="btn primary" type="submit">Провери и запази</button><span id="deye-busy" class="field-hint"></span></div>
+      <p class="form-error" id="deye-error" role="alert"></p>
+    </form>
+  </section>
+
+  <section class="card" aria-labelledby="h-gen">
+    <div class="card-head"><h2 id="h-gen">Обща информация</h2></div>
+    <form class="form" id="gen-form">
+      <div class="row">
+        <label>Име на системата <input name="site_name" maxlength="80" placeholder="по подразбиране: името на станцията в Deye"></label>
+        <label>Валута <input name="currency" list="ccy-list" maxlength="3" required pattern="[A-Za-z]{3}" placeholder="EUR"></label>
+        <label>Часова зона <input name="timezone" list="tz-list" placeholder="Europe/Berlin"></label>
+      </div>
+      <div class="row">
+        <label>Език на дашборда <select name="language"><option value="">по браузъра</option><option value="en">English</option><option value="bg">Български</option></select></label>
+        <label>Ширина (°) <input name="lat" type="number" step="0.0001" min="-90" max="90"></label>
+        <label>Дължина (°) <input name="lon" type="number" step="0.0001" min="-180" max="180"></label>
+      </div>
+      <p class="field-hint">Сумите не се превалутират: въвеждай цени и разходи във валутата, която избереш. Мястото идва от Deye, ако е въведено там; трябва за PVGIS и времето.</p>
+      <h3>Нощна тарифа</h3>
+      <label>Тип <select id="tariff-preset">
+        <option value="single">единна тарифа (без нощна)</option>
+        <option value="night_22_06">нощна 22:00–06:00 целогодишно</option>
+        <option value="night_23_07">нощна 23:00–07:00 целогодишно</option>
+        <option value="bg_seasonal">България: 23–07 (апр–окт), 22–06 (ное–мар)</option>
+        <option value="custom">други часове…</option>
+      </select></label>
+      <div id="win-list"></div>
+      <div class="actions" id="win-actions" hidden><button class="btn" type="button" id="win-add">+ период</button></div>
+      <p class="field-hint">Цените за дневна и нощна зона се въвеждат в <a href="/settings#prices">Настройки → Цени на тока</a>.</p>
+      <div class="actions"><button class="btn primary" type="submit">Запази</button><span id="gen-ok" class="field-hint"></span></div>
+      <p class="form-error" id="gen-error" role="alert"></p>
+    </form>
+  </section>
+
+  <section class="card" aria-labelledby="h-sys">
+    <div class="card-head"><h2 id="h-sys">Системата и парите</h2></div>
+    <p class="how">Тези данни са с дати (от кога важат), защото системите се разширяват. Въведи ги в Настройки:</p>
+    <div class="links">
+      <a class="btn" href="/settings#system">Панели (по MPPT вход) и батерия</a>
+      <a class="btn" href="/settings#prices">Цени на тока</a>
+      <a class="btn" href="/settings#money">Инвестиция (CAPEX) и разходи</a>
+      <a class="btn" href="/goals">Цели и сценарии</a>
+    </div>
+    <div id="sys-state" class="state"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-ai">
+    <div class="card-head"><h2 id="h-ai">AI анализ (по избор)</h2></div>
+    <p class="how">Страницата „Анализ“ пише изводи и препоръки с твой езиков модел. Без него остава празна; всичко останало работи.
+      Към модела отива само обобщение на числата (без пароли, фактури и точен адрес).</p>
+    <form class="form" id="ai-form" autocomplete="off">
+      <div class="row">
+        <label>Доставчик <select name="llm_provider" id="ai-provider"><option value="">без AI анализ</option></select></label>
+        <label>Модел <input name="llm_model" id="ai-model" placeholder="напр. claude-opus-5-5, llama3.1"></label>
+      </div>
+      <label id="ai-url-l">Адрес на API <input name="llm_base_url" id="ai-url" placeholder="https://api.openai.com/v1 или http://localhost:11434/v1"></label>
+      <label id="ai-key-l">API ключ <input name="api_key" id="ai-key" type="password" placeholder="остави празно, за да не се променя"></label>
+      <label>Език на анализа <input name="analysis_language" maxlength="2" placeholder="en, bg, de…"></label>
+      <div id="ai-state" class="state"></div>
+      <div class="actions"><button class="btn primary" type="submit">Запази</button><button class="btn" type="button" id="ai-key-del">Изтрий ключа</button><span id="ai-ok" class="field-hint"></span></div>
+      <p class="form-error" id="ai-error" role="alert"></p>
+    </form>
+  </section>
+
+  <div class="actions"><button class="btn primary" id="finish">Готово, към дашборда</button></div>
+</div>
+<datalist id="tz-list"></datalist>
+<datalist id="ccy-list"></datalist>
+{% endblock %}
+{% block script %}
+const $ = (id) => document.getElementById(id);
+const e = PV.esc;
+let S = null;
+async function send(method, path, body) {
+  const res = await fetch(`/api/${path}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  const js = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof js.detail === "string" ? js.detail : `Грешка ${res.status}`);
+  return js;
+}
+function state(el, ok, html) { el.className = "state " + (ok ? "ok" : "warn"); el.innerHTML = html; }
+
+const MONTHS = ["яну", "фев", "мар", "апр", "май", "юни", "юли", "авг", "сеп", "окт", "ное", "дек"];
+function winRow(w) {
+  const opt = (sel) => MONTHS.map((m, i) => `<option value="${i + 1}" ${sel === i + 1 ? "selected" : ""}>${m}</option>`).join("");
+  const d = document.createElement("div");
+  d.className = "form win-row";
+  d.innerHTML = `<label>от месец <select data-k="m0">${opt(w.months[0])}</select></label><label>до месец <select data-k="m1">${opt(w.months[1])}</select></label>
+    <label>от час <input data-k="start" value="${e(w.start)}" pattern="\\d\\d:\\d\\d" size="5"></label><label>до час <input data-k="end" value="${e(w.end)}" pattern="\\d\\d:\\d\\d" size="5"></label>
+    <button class="btn" type="button" aria-label="Премахни">✕</button>`;
+  d.querySelector("button").onclick = () => d.remove();
+  return d;
+}
+function setWindows(ws, custom) {
+  $("win-list").innerHTML = "";
+  ws.forEach((w) => $("win-list").append(winRow(w)));
+  $("win-list").querySelectorAll("select, input").forEach((x) => { x.disabled = !custom; });
+  $("win-actions").hidden = !custom;
+}
+function readWindows() {
+  return [...$("win-list").querySelectorAll(".win-row")].map((r) => {
+    const v = (k) => r.querySelector(`[data-k="${k}"]`).value;
+    return { months: [+v("m0"), +v("m1")], start: v("start"), end: v("end") };
+  });
+}
+function presetOf(ws) {
+  const key = JSON.stringify(ws);
+  return Object.entries(S.tariff_presets).find(([, p]) => JSON.stringify(p) === key)?.[0] || "custom";
+}
+
+async function load() {
+  S = await PV.api("app-settings");
+  const st = S.settings;
+  // Deye
+  const d = S.deye;
+  const sp = (x) => `<span>${x}</span>`;
+  state($("deye-state"), d.ready, d.pinned ? sp("Достъпът е зададен в .env (сменя се там).") :
+    d.ready ? `${sp("Свързано:")} <b>${e(d.email || "")}</b> · ${e(d.region)}. ${sp("Попълни формата само ако искаш да го смениш.")}` : sp("Още няма достъп: попълни данните и натисни „Провери и запази“."));
+  $("deye-form").hidden = d.pinned;
+  $("deye-how").open = !d.ready;
+  $("deye-region").value = d.region in d.regions ? d.region : "custom";
+  $("deye-url-l").hidden = $("deye-region").value !== "custom";
+  // general
+  const f = $("gen-form");
+  f.site_name.value = st.site_name || "";
+  f.currency.value = st.currency || "EUR";
+  f.timezone.value = st.timezone || "";
+  f.timezone.placeholder = S.timezone_effective;
+  f.language.value = st.language || "";
+  f.lat.value = S.location.lat ?? "";
+  f.lon.value = S.location.lon ?? "";
+  const preset = presetOf(st.tariff_night_windows);
+  $("tariff-preset").value = preset;
+  setWindows(st.tariff_night_windows, preset === "custom");
+  $("ccy-list").innerHTML = Object.entries(S.currencies).map(([k, v]) => `<option value="${k}">${e(v)}</option>`).join("");
+  try { $("tz-list").innerHTML = Intl.supportedValuesOf("timeZone").map((z) => `<option value="${z}">`).join(""); } catch (err) { /* old browser */ }
+  // AI
+  const a = S.llm, sel = $("ai-provider");
+  sel.innerHTML = `<option value="">без AI анализ</option>` + Object.entries(a.providers).map(([k, p]) => `<option value="${k}">${e(p.label)}</option>`).join("");
+  sel.value = a.provider || "";
+  $("ai-model").value = a.model || "";
+  $("ai-url").value = a.base_url || "";
+  $("ai-form").analysis_language.value = st.analysis_language || "";
+  sel.disabled = a.pinned.provider; $("ai-model").disabled = a.pinned.model; $("ai-url").disabled = a.pinned.base_url; $("ai-key").disabled = a.pinned.api_key;
+  aiFields();
+  state($("ai-state"), a.ready, a.ready ? `${sp("Готово:")} <b>${e(a.providers[a.provider].label)}${a.model ? " · " + e(a.model) : ""}</b>${a.has_key ? " · " + sp("ключът е запазен") : ""}.`
+    : a.provider === "cli" && !a.cli_command ? sp("За команда на компютъра задай LLM_CLI_COMMAND в .env (напр. claude -p) и рестартирай.")
+    : a.provider ? sp("Още не е готово: провери модела и ключа.") : sp("AI анализът е изключен."));
+  // system
+  const set = await PV.api("settings").catch(() => null);
+  if (set) {
+    const n = (t) => (set.tables?.[t]?.rows || []).length;
+    const parts = [["Панели", n("pv_array")], ["Батерия", n("battery_config")], ["Тарифи", n("tariff")], ["CAPEX", n("capex_item")]];
+    state($("sys-state"), parts.every(([, c]) => c), parts.map(([k, c]) => `${PV.t(k)}: ${c ? c + " " + PV.t("записа") : PV.t("няма записи")}`).join(" · "));
+  }
+}
+function aiFields() {
+  const p = $("ai-provider").value, info = S.llm.providers[p];
+  $("ai-url-l").hidden = !p || p === "cli";
+  $("ai-key-l").hidden = !p || p === "cli";
+  $("ai-model").closest("label").hidden = !p || p === "cli";
+  if (info && !$("ai-model").value && info.model) $("ai-model").value = info.model;
+  if (info && info.base_url) $("ai-url").placeholder = info.base_url;
+}
+
+$("deye-region").onchange = () => { $("deye-url-l").hidden = $("deye-region").value !== "custom"; };
+$("deye-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  $("deye-error").textContent = ""; $("deye-busy").textContent = "Проверявам при Deye…";
+  const body = Object.fromEntries(new FormData($("deye-form")));
+  try {
+    const r = await send("POST", "setup/deye", body);
+    $("deye-form").reset();
+    await load();
+    $("deye-state").innerHTML += `<br><span>Станции:</span> <b>${r.stations.map((s) => e(s.name) + (s.kwp ? ` (${PV.num(s.kwp, 2)} kWp)` : "")).join(", ")}</b>. <span>Събирането започва до минута и изтегля историята, която Deye пази (около 90 дни за 5-минутните данни).</span>`;
+  } catch (err) { $("deye-error").textContent = err.message; }
+  finally { $("deye-busy").textContent = ""; }
+});
+$("tariff-preset").onchange = () => {
+  const p = $("tariff-preset").value;
+  setWindows(p === "custom" ? (readWindows().length ? readWindows() : [{ months: [1, 12], start: "22:00", end: "06:00" }]) : S.tariff_presets[p], p === "custom");
+};
+$("win-add").onclick = () => $("win-list").append(winRow({ months: [1, 12], start: "22:00", end: "06:00" }));
+$("gen-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = $("gen-form");
+  $("gen-error").textContent = ""; $("gen-ok").textContent = "";
+  try {
+    await send("PUT", "app-settings", { site_name: f.site_name.value, currency: f.currency.value, timezone: f.timezone.value,
+      language: f.language.value, tariff_night_windows: readWindows(),
+      ...(f.lat.value !== "" && f.lon.value !== "" ? { lat: +f.lat.value, lon: +f.lon.value } : {}) });
+    $("gen-ok").textContent = "Запазено.";
+    await load();
+  } catch (err) { $("gen-error").textContent = err.message; }
+});
+$("ai-provider").onchange = aiFields;
+$("ai-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = $("ai-form");
+  $("ai-error").textContent = ""; $("ai-ok").textContent = "";
+  try {
+    const body = { analysis_language: f.analysis_language.value };
+    if (!S.llm.pinned.provider) body.llm_provider = f.llm_provider.value;
+    if (!S.llm.pinned.model) body.llm_model = f.llm_model.value;
+    if (!S.llm.pinned.base_url) body.llm_base_url = f.llm_base_url.value;
+    await send("PUT", "app-settings", body);
+    if (f.api_key.value && !S.llm.pinned.api_key) await send("PUT", "secrets/llm", { api_key: f.api_key.value });
+    f.api_key.value = "";
+    $("ai-ok").textContent = "Запазено.";
+    await load();
+  } catch (err) { $("ai-error").textContent = err.message; }
+});
+$("ai-key-del").onclick = async () => {
+  try { await send("PUT", "secrets/llm", { api_key: null }); await load(); } catch (err) { $("ai-error").textContent = err.message; }
+};
+$("finish").onclick = async () => {
+  try { await send("PUT", "app-settings", { setup_done: true }); location.href = "/"; } catch (err) { alert(err.message); }
+};
+document.addEventListener("DOMContentLoaded", load);
+{% endblock %}

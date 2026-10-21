@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}Здраве{% endblock %}
+{% block filters %}{% endblock %}
+{% block content %}
+<h1>Здраве на системата</h1>
+<p class="lead">Текущо състояние на батерията, инвертора, панелите и данните, и прогноза за износването на батерията от това как реално се ползва:
+  колко време стои пълна или на минимума, при каква температура, колко дълбоко и с какъв ток се зарежда и разрежда.
+  Deye не дава SOH от BMS, затова здравето е изчислено; прогнозата е ориентировъчна и параметрите ѝ се сменят най-долу.</p>
+
+<h2 class="section">Състояние</h2>
+<div class="hero" id="overall"></div>
+<div class="health-grid" id="components"></div>
+
+<h2 class="section">Батерия</h2>
+<div class="tiles" id="batt-tiles"></div>
+<div class="card">
+  <div class="card-head"><h2>Прогноза за здравето на батерията</h2><span class="code">B09 B13</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle" id="soh-sub">% от началния капацитет по модела на износване, до края на живота (70%)</p>
+  <div class="chart tall" id="c-soh"></div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Време по заряд (SOC)</h2><span class="code">B06 B07</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">% от времето в месеца; дълго на 100% ускорява стареенето на LFP, а на минимума значи, че батерията не стига</p>
+    <div class="chart" id="c-soc"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Време по температура на батерията</h2><span class="code">B05</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">часове в месеца (от инверторните данни); най-добре е 15–25 °C, всеки 10 °C отгоре удвояват стареенето</p>
+    <div class="chart" id="c-btemp"></div>
+  </div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Индекс на натоварване</h2><span class="code">B13</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">0–100 по месеци: принос на пълния заряд, температурата, дълбочината на разряд и тока</p>
+    <div class="chart" id="c-stress"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Средна температура на батерията</h2><span class="code">B05</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle" id="tfit-sub">°C по месеци: измерена и изчислена от външната температура</p>
+    <div class="chart" id="c-tmodel"></div>
+  </div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Използваем капацитет</h2><span class="code">B09</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">kWh по месеци = разредена енергия / спад на SOC (оценка по SOC на BMS) спрямо номиналния капацитет</p>
+    <div class="chart" id="c-cap"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Цикли и дълбочина на разряд</h2><span class="code">B02</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">еквивалентни пълни цикли в месеца</p>
+    <div class="chart" id="c-cycles"></div>
+  </div>
+</div>
+
+<h2 class="section">Инвертор</h2>
+<div class="tiles" id="inv-tiles"></div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Време по температура на инвертора</h2><span class="code">I04</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">часове в месеца по AC температурата (DC температура няма в API)</p>
+    <div class="chart" id="c-itemp"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Температура спрямо мощност</h2><span class="code">I04</span></div>
+    <p class="subtitle">средно за всеки час от последните 120 дни: AC температура, °C, при изходна мощност, kW</p>
+    <div class="chart" id="c-scatter"></div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Максимална температура по дни</h2><span class="code">B05 I04</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle">°C, най-високата за деня</p>
+  <div class="chart" id="c-daily"></div>
+</div>
+
+<h2 class="section">Модел и методика</h2>
+<div class="card">
+  <div class="card-head"><h2>Параметри на модела</h2></div>
+  <form id="hparams" class="form"></form>
+  <p class="form-error" id="hp-error"></p>
+</div>
+<div class="note box" id="method"></div>
+{% endblock %}
+{% block script %}
+const ICON = { good: "✓", watch: "!", bad: "✕", no_data: "–" };
+const badge = (lvl, label, cls = "") => `<span class="badge ${cls} s-${lvl}"><span class="ico" aria-hidden="true">${ICON[lvl]}</span>${PV.esc(label)}</span>`;
+const PARAM_LABEL = {
+  health_batt_rated_cycles: "Цикли до края на живота", health_batt_eol_pct: "Край на живота, % капацитет",
+  health_batt_calendar_fade_pct: "Календарно стареене при 25 °C, %/год", health_batt_high_soc_factor: "Ускорение при SOC ≥ 90%",
+  health_batt_break_in_months: "По-бързо стареене първите, месеца", health_batt_reserve_pct: "Резерв над номинала, %",
+  health_batt_app_soh_pct: "SOH в приложението Deye, %",
+  health_inv_design_life_years: "Проектен живот на инвертора, години", health_inv_ref_temp_c: "Нормална температура на инвертора, °C",
+};
+
+async function send(method, path, body) {
+  const res = await fetch(`/api/${path}`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) { let msg = `${res.status}`; try { msg = (await res.json()).detail; } catch (e) { /* not json */ } throw new Error(msg); }
+  return res.json();
+}
+
+async function load() {
+  const H = await PV.api("health");
+  const S = H.status, M = H.months, x = M.map((r) => r.month);
+  const FA = H.battery_forecast.actual, FI = H.battery_forecast.ideal, IF = H.inverter_forecast;
+
+  document.getElementById("overall").innerHTML = `<div class="label">Общо състояние към ${PV.fmtDate(S.as_of)}</div>
+    <div style="margin-top:6px">${badge(S.overall, S.overall_label, "big")}</div>
+    <div class="sub">най-лошото от четирите части; подробности по-долу</div>`;
+  document.getElementById("components").innerHTML = Object.values(S.components).map((c) => `
+    <div class="card"><div class="card-head"><h2>${PV.esc(c.label)}</h2><span style="margin-left:auto">${badge(c.level, c.level_label)}</span></div>${PV.ecg(c.level)}
+    <ul class="checks">${c.checks.map((k) => `<li><span>${badge(k.level, k.name)}</span><span class="v">${PV.num(k.value, k.unit === "бр." ? 0 : 1)} ${PV.esc(k.unit)}</span>
+      <span class="rule">${PV.esc(k.rule)}</span></li>`).join("")}</ul></div>`).join("");
+
+  const last = M[M.length - 1] || {}, cap = H.capacity[H.capacity.length - 1];
+  const CY = S.cycles;
+  PV.tiles("batt-tiles", [
+    { code: "B02", label: "Цикли до момента", value: PV.num(CY.total, 0), unit: "цикъла",
+      sub: `целият пакет ${PV.num(CY.capacity_kwh, 2)} kWh; ${PV.num(CY.total / CY.rated * 100, 1)}% от ${PV.num(CY.rated, 0)} по каталог; ~${PV.num(CY.per_year, 0)} на година` },
+    { code: "B09", label: "Здраве на батерията (SOH, модел)", value: PV.num(FA.soh_now, 1), unit: "%", conditional: true,
+      sub: `клетките: ${PV.num(H.battery_forecast.cells_now, 1)}% от капацитета при доставка` },
+    { code: "B09", label: "Загуба на капацитет, следващите 12 месеца", value: PV.num(FA.fade_per_year, 1), unit: "%", conditional: true,
+      sub: `после ~${PV.num(FA.fade_per_year_long, 1)}%/год при сегашните условия` },
+    { code: "B09", label: "Край на живота на батерията (70%)", value: FA.eol_date ? FA.eol_date.slice(0, 4) : "след 30 г.", conditional: true,
+      sub: `${PV.num(FA.years_to_eol, 1)} г. от пускането; при 25 °C и без 100% SOC: ${FI.eol_date ? FI.eol_date.slice(0, 4) : "–"}` },
+    { code: "B09", label: "Измерен полезен капацитет", value: PV.num(cap && cap.kwh, 1), unit: "kWh", sub: cap ? `${PV.num(cap.pct, 0)}% от ${PV.num(cap.nominal, 2)} kWh, ${PV.label(cap.month)}` : "" },
+    { code: "B06", label: "Време на 100%, този месец", value: PV.num(last.soc_full_h_day, 1), unit: "ч/ден", sub: `${PV.num(last.soc_full, 0)}% от времето` },
+    { code: "B05", label: "Средна температура на батерията, този месец", value: PV.num(last.bt_avg ?? last.bt_model_avg, 1), unit: "°C", sub: `макс. ${PV.num(last.bt_max, 0)} °C` },
+    { code: "B13", label: "Натоварване на батерията", value: PV.num(last.stress && last.stress.index, 0), unit: "/100", sub: "този месец" },
+  ]);
+
+  // SOH forecast
+  const day = (d) => Date.parse(d + "T00:00:00Z");
+  const hist = H.battery_forecast.history.map(([d, v]) => [day(d), v]);
+  const fa = FA.points.map(([d, v]) => [day(d), v]), fi = FI.points.map(([d, v]) => [day(d), v]);
+  const capPts = H.capacity.map((c) => [day(c.month + "-15"), c.pct]);
+  const cells = H.battery_forecast.cells_history.map(([d, v]) => [day(d), v]);
+  const appPts = H.battery_forecast.app_readings.map(([d, v]) => [day(d), v]);
+  document.getElementById("soh-sub").textContent =
+    `% от номиналния капацитет, както го показва BMS (най-старите модули, от пускането); клетките са с ${PV.num(H.params.health_batt_reserve_pct, 0)}% резерв над номинала; край на живота при ${PV.num(H.params.health_batt_eol_pct, 0)}%`;
+  PV.chart("c-soh", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: Object.assign(PV.tooltip(t, () => "%", 1), { formatter: (ps) => {
+      const head = new Date(ps[0].value[0]).toLocaleDateString(PV.locale, { timeZone: "UTC" });
+      return `<div style="color:${t.text2}">${head}</div>` + ps.filter((p) => !p.seriesName.startsWith("_")).map((p) => `<div><b>${PV.num(p.value[1], 1)}%</b> <span style="color:${t.text2}">${PV.esc(p.seriesName)}</span></div>`).join("");
+    } }),
+    grid: { left: 8, right: 20, top: 72, bottom: 8, containLabel: true },
+    xAxis: PV.timeAxis(t), yAxis: PV.valueAxis(t, "%", { min: 60, max: 105 }),
+    series: [
+      PV.line("Досега, спрямо номинала (модел)", hist, t.battery),
+      PV.line("Клетките спрямо капацитета при доставка", cells, t.battery, { lineStyle: { width: 1, color: t.battery, opacity: 0.6 } }),
+      PV.line("Прогноза при сегашните условия", fa, t.battery, { lineStyle: { width: 2, color: t.battery, type: [6, 4] },
+        markLine: { silent: true, symbol: "none", lineStyle: { color: t.muted, width: 1, type: "solid" },
+          label: { color: t.muted, position: "insideStartTop", formatter: "край на живота" }, data: [{ yAxis: H.params.health_batt_eol_pct }] } }),
+      PV.line("Ако е при 25 °C и без 100% SOC", fi, t.muted, { lineStyle: { width: 2, color: t.muted, type: [2, 3] } }),
+      { name: "SOH в приложението Deye", type: "scatter", data: appPts, symbol: "diamond", symbolSize: 12, z: 5,
+        itemStyle: { color: t.text1, borderColor: t.surface, borderWidth: 2 } },
+      { name: "Капацитет по SOC (оценка)", type: "scatter", data: capPts, symbolSize: 8, itemStyle: { color: t.text2, borderColor: t.surface, borderWidth: 2 } },
+    ],
+  }));
+
+  // SOC bands
+  const socNames = ["на минимума", "среден", "90–99%", "≥ 99%"], socKeys = ["soc_min", "soc_mid", "soc_high", "soc_full"];
+  PV.chart("c-soc", (t) => PV.base(t, {
+    legend: PV.barLegend(t), tooltip: PV.tooltip(t, () => "%", 0),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "%", { max: 100 }),
+    series: socKeys.map((k, i) => PV.stackBar(t, socNames[i], M.map((r) => r[k]), t.socRamp[i])),
+  }));
+  const bandChart = (id, key, names) => {
+    const rows = M.filter((r) => r[key]);
+    PV.chart(id, (t) => PV.base(t, {
+      legend: PV.barLegend(t), tooltip: PV.tooltip(t, () => "ч", 0),
+      xAxis: PV.catAxis(t, rows.map((r) => r.month)), yAxis: PV.valueAxis(t, "ч"),
+      series: names.map((n, i) => PV.stackBar(t, n, rows.map((r) => r[key][i]), t.heat[i])),
+    }));
+  };
+  bandChart("c-btemp", "bt_bands", H.bands.battery);
+  bandChart("c-itemp", "it_bands", H.bands.inverter);
+
+  // stress index: weighted contributions
+  const W = { soc: 0.30, temp: 0.35, dod: 0.20, crate: 0.15 };
+  const contrib = (r, k) => {
+    const s = r.stress; if (!s || s[k] === null) return null;
+    const have = Object.keys(W).filter((q) => s[q] !== null), tot = have.reduce((a, q) => a + W[q], 0);
+    return W[k] * s[k] / tot;
+  };
+  PV.chart("c-stress", (t) => PV.base(t, {
+    legend: PV.barLegend(t), tooltip: PV.tooltip(t, () => "", 0),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "", { max: 100 }),
+    series: [
+      PV.stackBar(t, "Температура", M.map((r) => contrib(r, "temp")), t.temp),
+      PV.stackBar(t, "Време на 100%", M.map((r) => contrib(r, "soc")), t.battery),
+      PV.stackBar(t, "Дълбочина на разряд", M.map((r) => contrib(r, "dod")), t.load),
+      PV.stackBar(t, "Ток над 0.25C", M.map((r) => contrib(r, "crate")), t.export),
+    ],
+  }));
+  const fit = H.temp_fit;
+  document.getElementById("tfit-sub").textContent = fit
+    ? `°C по месеци; преди инверторните данни е изчислена: батерия ≈ ${PV.num(fit.a, 1)} + ${PV.num(fit.b, 2)} × външна температура (${fit.n} дни, грешка ±${PV.num(fit.rmse, 1)} °C)`
+    : "°C по месеци";
+  PV.chart("c-tmodel", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: PV.tooltip(t, () => "°C", 1),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "°C", { min: 0 }),
+    series: [
+      PV.line("Измерена", M.map((r) => r.bt_avg), t.temp, { showSymbol: true }),
+      PV.line("Изчислена (ползва се в модела)", M.map((r) => r.bt_model_avg), t.temp, { showSymbol: true, lineStyle: { width: 2, color: t.temp, type: [6, 4] },
+        markLine: { silent: true, symbol: "none", lineStyle: { color: t.muted, width: 1, type: "solid" }, label: { color: t.muted, position: "insideStartTop", formatter: "25 °C" }, data: [{ yAxis: 25 }] } }),
+    ],
+  }));
+  PV.chart("c-cap", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: PV.tooltip(t, () => "kWh", 1),
+    xAxis: PV.catAxis(t, H.capacity.map((c) => c.month)), yAxis: PV.valueAxis(t, "kWh", { min: 0 }),
+    series: [PV.bar("Оценка", H.capacity.map((c) => c.kwh), t.battery),
+             PV.line("Номинален", H.capacity.map((c) => c.nominal), t.muted, { step: "middle" })],
+  }));
+  PV.chart("c-cycles", (t) => PV.base(t, {
+    tooltip: PV.tooltip(t, () => "цикъла", 1), grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "цикъла"),
+    series: [PV.bar("Еквивалентни цикли", M.map((r) => r.cycles), t.battery)],
+  }));
+
+  // inverter
+  PV.tiles("inv-tiles", [
+    { code: "I04", label: "Макс. температура на инвертора, този месец", value: PV.num(last.it_max, 0), unit: "°C", sub: `средно ${PV.num(last.it_avg, 0)} °C` },
+    { code: "I04", label: "Стареене от топлина", value: PV.num(IF.ageing_factor, 2), unit: "×", conditional: true,
+      sub: `спрямо ${PV.num(H.params.health_inv_ref_temp_c, 0)} °C; само за ${IF.months_with_data} месеца (лято и есен)` },
+    { code: "I04", label: "Очакван живот на инвертора", value: PV.num(IF.life_years, 1), unit: "години", conditional: true,
+      sub: `при проектни ${PV.num(H.params.health_inv_design_life_years, 0)} години` },
+    { code: "I03", label: "Време на максимална мощност 15 kW", value: PV.num(last.clip_h, 1), unit: "ч" },
+    { code: "I09", label: "Прекъсвания на мрежата", value: String(M.reduce((a, r) => a + r.outages, 0)), unit: "бр.", sub: "от инверторните данни" },
+    { code: "I08", label: "Пренапрежение в мрежата (над 253 V)", value: String(M.reduce((a, r) => a + r.overvoltage_frames, 0)), unit: "кадъра", sub: "от инверторните данни" },
+  ]);
+  PV.chart("c-scatter", (t) => PV.base(t, {
+    grid: { left: 8, right: 20, top: 24, bottom: 24, containLabel: true },
+    tooltip: { trigger: "item", backgroundColor: t.surface, borderColor: t.border, textStyle: { color: t.text1 },
+      formatter: (p) => `<b>${PV.num(p.value[1], 1)} °C</b> при ${PV.num(p.value[0], 1)} kW` },
+    xAxis: Object.assign(PV.valueAxis(t, "kW"), { nameLocation: "end", splitLine: { show: false } }), yAxis: PV.valueAxis(t, "°C", { scale: true }),
+    series: [{ name: "Час", type: "scatter", data: H.inv_scatter, symbolSize: 5, itemStyle: { color: t.temp, opacity: 0.55 } }],
+  }));
+  const D = H.daily.filter((d) => d.temp_batt_max !== null || d.temp_inv_max !== null);
+  PV.chart("c-daily", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: PV.tooltip(t, () => "°C", 0),
+    xAxis: PV.catAxis(t, D.map((d) => d.day)), yAxis: PV.valueAxis(t, "°C", { min: 20 }),
+    series: [PV.line("Инвертор (AC)", D.map((d) => d.temp_inv_max), t.temp),
+             PV.line("Батерия", D.map((d) => d.temp_batt_max), t.battery)],
+  }));
+
+  // params
+  const f = document.getElementById("hparams");
+  const rows = H.param_rows || [];
+  f.innerHTML = `<div class="row">` + rows.map((p) => `<label title="${PV.esc(p.note || "")}">${PV.esc(PARAM_LABEL[p.key] || p.key)}
+      <input type="number" step="any" name="${PV.esc(p.key)}" value="${p.value ?? ""}"></label>`).join("") +
+    `</div><div class="actions"><span class="sub">задръж мишката върху полето за обяснение</span><span style="flex:1"></span><button type="submit" class="btn">Запази</button></div>`;
+  f.onsubmit = async (ev) => {
+    ev.preventDefault();
+    try {
+      for (const p of rows) {
+        const v = Number(f[p.key].value);
+        if (v !== p.value) await send("PUT", `params/${p.key}`, { value: v });
+      }
+      document.getElementById("hp-error").textContent = "";
+      await load();
+    } catch (e) { document.getElementById("hp-error").textContent = `Не е записано: ${e.message}`; }
+  };
+
+  const P = H.params;
+  document.getElementById("method").innerHTML = `
+    <b>Модел на износване (ориентировъчен).</b> За всеки ден: календарно стареене ${PV.num(P.health_batt_calendar_fade_pct, 1)}%/год при 25 °C,
+    през първите ${PV.num(P.health_batt_break_in_months, 0)} месеца по-бързо (по √време, както расте пасивният слой в клетките), после линейно; умножено по 2<sup>(T − 25)/10</sup> за средната температура на батерията и по (1 + ${PV.num(P.health_batt_high_soc_factor, 1)} × дял от времето със SOC ≥ 90%),
+    плюс износване от цикли: еквивалентни цикли × ${PV.num(100 - P.health_batt_eol_pct, 0)}% / ${PV.num(P.health_batt_rated_cycles, 0)} цикъла.
+    Прогнозата повтаря средното износване по календарни месеци от последните 12 месеца. Моделът е за най-старите модули (от пускането); добавените по-късно са по-млади.
+    <br><br><b>Защо приложението показва 100%.</b> Новите модули имат малко повече капацитет от номиналния (резерв ~${PV.num(P.health_batt_reserve_pct, 0)}%, оценка),
+    а BMS отчита SOH спрямо номинала и го обновява рядко и на цели проценти. Затова първите проценти износване на клетките не се виждат.
+    Въвеждай SOH от приложението най-долу от време на време; ще се покаже на графиката и ще служи за сверка на модела.
+    <br><br><b>Температура преди инверторните данни.</b> Deye пази инверторната история само ~90 дни, затова за по-ранните дни температурата на батерията е изчислена
+    от външната (Open-Meteo) по връзката от дните, в които има и двете. Колкото по-различно е помещението на батерията от външната среда, толкова по-несигурно е.
+    <br><br><b>Капацитет по SOC.</b> Разредената енергия в 5-минутните интервали само с разряд, делена на спада на SOC. SOC идва от BMS, затова това е
+    капацитетът, който BMS вижда; реалното стареене ще се появи като бавен спад тук след месеци. Дните, в които са добавяни модули, не се броят.
+    <br><br><b>Индекс на натоварване.</b> 0–100: време на SOC ≥ 99% (100 = половината време), средна температура (100 = 35 °C), средна дневна дълбочина на разряд
+    (100 = 100%) и време с ток над 0.25C (100 = 20% от времето); тегла 30 / 35 / 20 / 15.
+    <br><br><b>Инвертор.</b> Топлинното стареене на кондензаторите се удвоява на всеки 10 °C (правило на Арениус); множителят е средното 2<sup>(T − ${PV.num(P.health_inv_ref_temp_c, 0)})/10</sup>
+    за всички часове с данни. Засега има само лято и есен, затова оценката е песимистична.`;
+}
+document.addEventListener("DOMContentLoaded", async () => {
+  PV.setLoading(true);
+  try { await load(); } finally { PV.setLoading(false); }
+});
+{% endblock %}
