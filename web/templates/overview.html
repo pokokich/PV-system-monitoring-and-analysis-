@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Обзор{% endblock %}
+{% block filters %}
+<div class="filters" id="filters">
+  <label>Ден <input type="date" id="day" min="{{ first_day }}" max="{{ last_day }}"></label>
+  <span class="range-note" id="day-note"></span>
+</div>
+{% endblock %}
+{% block content %}
+<h1>Обзор</h1>
+<p class="lead">Сега, избраният ден, месецът му и всичко от пускането на системата. Данните са от локалната база на колектора.</p>
+
+<div class="ov-top">
+  <div class="card">
+    <div class="card-head"><h2>Енергия сега</h2><span class="stamp" id="now-stamp"></span></div>
+    <p class="subtitle">Откъде идва и къде отива мощността в последния 5-минутен кадър; обновява се всяка минута</p>
+    <div id="flow" class="flow" role="img" aria-label="Енергиен поток сега"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2 id="day-title">Избраният ден</h2></div>
+    <p class="subtitle">Сборът от полунощ до последния кадър; другите периоди са в таблицата по-долу</p>
+    <div class="day-wrap"><div class="ring" id="day-ring"></div><div class="day-tiles" id="day-tiles"></div></div>
+  </div>
+</div>
+
+<div class="hero" id="hero">
+  <div class="label">Натрупана нетна полза от пускането (F02)</div>
+  <div class="value" id="hero-value">–</div>
+  <div class="sub" id="hero-sub"></div>
+  <div class="meter"><span id="hero-meter" style="width:0"></span></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Здраве на системата</h2><a class="more" href="/health">натоварване, температури и прогноза</a></div>
+  <div class="health-strip" id="health-strip"></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Цели</h2><a class="more" href="/goals">всички цели и бенчмаркове</a></div>
+  <div class="table-wrap" style="max-height:none"><table class="data goals-list" id="goals-list"></table></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Ден, месец и от пускането</h2></div>
+  <div class="table-wrap" style="max-height:none">
+    <table class="data compare" id="compare"></table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Мощности през деня</h2><span class="code">E01 E02 E03 E06</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle">kW, 5-минутни кадри; мрежа &gt; 0 е внос, батерия &gt; 0 е разряд</p>
+  <div class="chart tall" id="c-power"></div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Заряд на батерията (SOC)</h2><span class="code">B01</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle" id="soc-sub">%, линия на минималния SOC от настройките</p>
+  <div class="chart short" id="c-soc"></div>
+</div>
+{% endblock %}
+{% block script %}
+const ROWS = [
+  ["E01", "PV производство", "kWh", 1, (s) => s.totals.pv],
+  ["E02", "Консумация", "kWh", 1, (s) => s.totals.load],
+  ["E03", "Импорт от мрежата", "kWh", 1, (s) => s.totals.imp],
+  ["E05", "Експорт", "kWh", 1, (s) => s.totals.exp],
+  ["E06", "Заряд / разряд на батерията", "kWh", 1, (s) => [s.totals.chg, s.totals.dis]],
+  ["U02", "Самозадоволяване", "%", 1, (s) => s.kpis.U02.value],
+  ["U01", "Самопотребление", "%", 1, (s) => s.kpis.U01.value],
+  ["P01", "Специфичен добив", "kWh/kWp", 2, (s) => s.kpis.P01.value],
+  ["B02", "Еквивалентни цикли", "", 2, (s) => s.kpis.B02.value],
+  ["G02", "Сметка без PV", "{{ ccy }}", 2, (s) => s.kpis.G02.value],
+  ["G01", "Разход за ток от мрежата", "{{ ccy }}", 2, (s) => s.kpis.G01.value],
+  ["F01", "Нетна полза", "{{ ccy }}", 2, (s) => s.kpis.F01.value],
+];
+
+// Energy flow: four nodes around the inverter; dots run along each live wire in the direction of the power,
+// faster with more kW; idle wires stay grey. Without motion (OS setting) the wires are drawn dashed and still.
+// grid_kw > 0 is import, battery_kw > 0 is discharge (Deye station frame signs).
+async function renderNow() {
+  const n = await PV.api("now");
+  const el = document.getElementById("flow");
+  if (!n.ts) { el.innerHTML = '<p class="empty">Няма данни от колектора.</p>'; return; }
+  const kw = (v) => PV.num(Math.abs(v ?? 0), 2) + " kW";
+  const on = (v) => Math.abs(v ?? 0) >= 0.05;
+  const pv = n.pv_kw ?? 0, load = n.load_kw ?? 0, grid = n.grid_kw ?? 0, batt = n.battery_kw ?? 0;
+  const temp = n.battery_temp && n.battery_temp.value;
+  const H = [260, 160];
+  const nodes = [
+    { id: "pv", x: 260, y: 48, icon: "sun", c: "--c-pv", v: pv, flow: on(pv), rev: false,
+      kw: kw(pv), lbl: "PV", tx: 300, ty: 42, anchor: "start" },
+    { id: "grid", x: 70, y: 160, icon: "plug", c: "--c-grid", v: grid, flow: on(grid), rev: grid < 0,
+      kw: kw(grid), lbl: on(grid) ? (grid > 0 ? "внос от мрежата" : "износ към мрежата") : "мрежа", tx: 70, ty: 218, anchor: "middle" },
+    { id: "home", x: 450, y: 160, icon: "home", c: "--c-load", v: load, flow: on(load), rev: true,
+      kw: kw(load), lbl: "консумация", tx: 450, ty: 218, anchor: "middle" },
+    { id: "batt", x: 260, y: 268, icon: "battery", c: "--c-battery", v: batt, flow: on(batt), rev: batt < 0,
+      kw: kw(batt), lbl: `${on(batt) ? (batt > 0 ? "разряд" : "заряд") : "батерия"} · ${PV.num(n.soc, 0)}%` + (temp != null ? ` · ${PV.num(temp, 0)} °C` : ""),
+      tx: 300, ty: 262, anchor: "start" },
+  ];
+  const moving = PV.motion();
+  const dots = (d) => {
+    const path = d.rev ? `M${H[0]} ${H[1]} L${d.x} ${d.y}` : `M${d.x} ${d.y} L${H[0]} ${H[1]}`;
+    const dur = Math.max(0.7, Math.min(2.8, 2.8 - Math.abs(d.v) * 0.15));
+    return [0, 1, 2].map((i) => `<circle r="5" style="fill:var(${d.c})" opacity="0"><animateMotion dur="${dur.toFixed(2)}s" begin="${(-i * dur / 3).toFixed(2)}s" repeatCount="indefinite" path="${path}"/>` +
+      `<animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.15;0.85;1" dur="${dur.toFixed(2)}s" begin="${(-i * dur / 3).toFixed(2)}s" repeatCount="indefinite"/></circle>`).join("");
+  };
+  const wire = (d) => `<path class="wire" d="M${d.x} ${d.y} L${H[0]} ${H[1]}"/>` + (!d.flow ? ""
+    : `<path class="wire" style="stroke:var(${d.c});opacity:.35${moving ? "" : ";stroke-dasharray:6 6"}" d="M${d.x} ${d.y} L${H[0]} ${H[1]}"/>` + (moving ? dots(d) : ""));
+  const node = (d) => `<g class="${d.id === "pv" && d.flow ? "pv-on" : ""}" style="color:var(${d.c})"><circle class="node-bg" cx="${d.x}" cy="${d.y}" r="28" stroke="currentColor"/>` +
+    (d.id === "batt" ? `<clipPath id="soc-clip"><circle cx="${d.x}" cy="${d.y}" r="27"/></clipPath><rect class="soc" clip-path="url(#soc-clip)" x="${d.x - 28}" width="56" y="${d.y + 28 - 56 * (n.soc ?? 0) / 100}" height="${56 * (n.soc ?? 0) / 100}"/>` : "") +
+    `<g${d.id === "pv" && d.flow ? ` class="spin" style="transform-origin:${d.x}px ${d.y}px"` : ""}><use href="#i-${d.icon}" class="node-ico" x="${d.x - 13}" y="${d.y - 13}" width="26" height="26" stroke="currentColor"/></g></g>` +
+    `<text class="kw" x="${d.tx}" y="${d.ty}" text-anchor="${d.anchor}">${PV.esc(d.kw)}</text>` +
+    `<text class="lbl" x="${d.tx}" y="${d.ty + 20}" text-anchor="${d.anchor}">${PV.esc(d.lbl)}</text>`;
+  el.innerHTML = `<svg class="flow" viewBox="0 0 520 320" aria-hidden="true">${nodes.map(wire).join("")}` +
+    `<circle class="hub" cx="${H[0]}" cy="${H[1]}" r="14"/>${nodes.map(node).join("")}</svg>`;
+  el.setAttribute("aria-label", `Сега: PV ${kw(pv)}, консумация ${kw(load)}, ` +
+    `${grid >= 0 ? "внос" : "износ"} ${kw(grid)}, батерия ${batt >= 0 ? "разряд" : "заряд"} ${kw(batt)}, заряд ${PV.num(n.soc, 0)}%`);
+  const t = new Date(n.ts * 1000).toLocaleString(PV.locale, { timeZone: PV.tz, hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
+  document.getElementById("now-stamp").textContent = `кадър ${t} · преди ${PV.num(n.age_min, 0)} мин`;
+}
+
+const ICON = { met: "✓", on_track: "✓", at_risk: "!", behind: "✕", no_data: "–" };
+const HICON = { good: "✓", watch: "!", bad: "✕", no_data: "–" };
+async function renderHealth() {
+  const s = (await PV.api("health", { detail: false })).status;
+  const worst = (c) => c.checks.find((k) => k.level === c.level) || c.checks[0];
+  document.getElementById("health-strip").innerHTML = Object.values(s.components).map((c) => {
+    const k = worst(c);
+    return `<div><div class="lbl">${PV.esc(c.label)}</div><span class="badge s-${c.level}"><span class="ico" aria-hidden="true">${HICON[c.level]}</span>${PV.esc(c.level_label)}</span>${PV.ecg(c.level)}` +
+      (k ? `<div class="sub">${PV.esc(k.name)}: ${PV.num(k.value, 1)} ${PV.esc(k.unit)}</div>` : "") + `</div>`;
+  }).join("") + `<div><div class="lbl">Цикли на батерията до момента</div><div class="big-num">${PV.num(s.cycles.total, 0)}</div>` +
+    `<div class="sub">целият пакет ${PV.num(s.cycles.capacity_kwh, 2)} kWh; ${PV.num(s.cycles.total / s.cycles.rated * 100, 1)}% от ${PV.num(s.cycles.rated, 0)} по каталог; ~${PV.num(s.cycles.per_year, 0)} на година</div></div>`;
+}
+
+async function renderGoals() {
+  const g = await PV.api("goals", { history: false });
+  const tbl = document.getElementById("goals-list");
+  const unitDigits = (u) => (u === "%" || u === "години" ? 1 : 0);
+  tbl.innerHTML = `<thead><tr><th></th><th>Цел</th><th>Период</th><th>Досега</th><th>Прогноза</th><th>Цел</th><th>Статус</th></tr></thead><tbody>` +
+    g.goals.filter((x) => x.active).map((x) => {
+      const c = x.current, u = x.unit, d = unitDigits(u);
+      const per = x.kpi_id === "F04" ? "от пускането" : x.period_type === "year" ? (c.start || "").slice(0, 4)
+        : x.period_type === "month" ? PV.label((c.start || "").slice(0, 7)) : x.period_label;
+      return `<tr><td class="code">${PV.esc(x.kpi_id)}</td><td>${PV.esc(x.title || x.kpi_name)}</td><td data-label="Период">${PV.esc(per)}</td>` +
+        `<td data-label="Досега">${PV.num(c.actual, d)} ${PV.esc(u)}</td><td data-label="Прогноза">${c.has_end && !c.ended ? `${PV.num(c.forecast, d)} ${PV.esc(u)}` : "–"}</td>` +
+        `<td data-label="Цел">${x.direction === "ge" ? "≥" : "≤"} ${PV.num(x.target, d)} ${PV.esc(u)}</td>` +
+        `<td><span class="badge s-${c.status}"><span class="ico" aria-hidden="true">${ICON[c.status]}</span>${PV.esc(x.status_label)}</span></td></tr>`;
+    }).join("") + "</tbody>";
+}
+
+async function render(state) {
+  const day = state.day;
+  document.getElementById("day-note").textContent = PV.fmtDate(day);
+  const month0 = day.slice(0, 8) + "01";
+  const [d, mo, all] = await Promise.all([
+    PV.api("kpi", { from: day, to: day }),
+    PV.api("kpi", { from: month0, to: day }),
+    PV.api("kpi", { from: PV.first(), to: day }),
+  ]);
+  document.getElementById("day-title").textContent = day === PV.last() ? `Днес, ${PV.fmtDate(day)}` : `Денят ${PV.fmtDate(day)}`;
+  PV.ring(document.getElementById("day-ring"), d.kpis.U02.value, "var(--c-pv)", "самозадоволяване");
+  PV.tiles("day-tiles", [
+    { label: "PV производство", value: PV.num(d.totals.pv, 1), unit: "kWh", code: "E01" },
+    { label: "Консумация на дома", value: PV.num(d.totals.load, 1), unit: "kWh", code: "E02" },
+    { label: "Импорт от мрежата", value: PV.num(d.totals.imp, 1), unit: "kWh", code: "E03" },
+    { label: "Заряд на батерията", value: PV.num(d.totals.chg, 1), unit: "kWh", code: "E06" },
+    { label: "Разряд на батерията", value: PV.num(d.totals.dis, 1), unit: "kWh", code: "E06" },
+    { label: "Нетна полза за деня", value: PV.num(d.kpis.F01.value, 2), unit: "{{ ccy }}", code: "F01" },
+  ]);
+  const pb = all.payback;
+  PV.countUp(document.getElementById("hero-value"), `${PV.num(pb.cumulative, 0)} {{ ccy }}`, 1400);
+  document.getElementById("hero-sub").textContent =
+    `${PV.num(pb.roi, 1)}% от CAPEX ${PV.num(pb.capex, 2)} {{ ccy }} · прогнозна окупаемост ${PV.num(pb.scenario_years, 1)} години от пускането, ${PV.fmtDate(pb.scenario_date)} (базов сценарий, виж Цели)`;
+  document.getElementById("hero-meter").style.width = `${Math.min(100, Math.max(0, pb.roi || 0))}%`;
+
+  const tbl = document.getElementById("compare");
+  tbl.innerHTML = "";
+  const head = tbl.createTHead().insertRow();
+  ["", "Показател", `Ден ${PV.fmtDate(day)}`, `Месец до ${PV.fmtDate(day)}`, "От пускането"].forEach((h) => {
+    const th = document.createElement("th"); th.textContent = h; head.appendChild(th);
+  });
+  const tb = tbl.createTBody();
+  for (const [code, name, unit, digits, get] of ROWS) {
+    const tr = tb.insertRow();
+    tr.insertCell().textContent = code; tr.cells[0].className = "code";
+    tr.insertCell().textContent = unit ? `${name}, ${unit}` : name;
+    for (const s of [d, mo, all]) {
+      const v = get(s);
+      tr.insertCell().textContent = Array.isArray(v) ? v.map((x) => PV.num(x, digits)).join(" / ") : PV.num(v, digits);
+    }
+  }
+
+  const p = await PV.api("power", { day });
+  const rows = p.rows;
+  const at = (i) => rows.map((r) => [r[0], r[i]]);
+  PV.chart("c-power", (t) => PV.base(t, {
+    legend: PV.legend(t),
+    tooltip: PV.tooltip(t, () => "kW", 2),
+    xAxis: PV.timeAxis(t),
+    yAxis: PV.valueAxis(t, "kW"),
+    series: [
+      PV.line("PV", at(1), t.pv, { areaStyle: { color: t.pv, opacity: 0.1 } }),
+      PV.line("Консумация", at(2), t.load),
+      PV.line("Мрежа", at(3), t.gridImp, { lineStyle: { width: 2, color: t.gridImp, type: [6, 4] } }),
+      PV.line("Батерия", at(4), t.battery),
+    ],
+  }));
+  const minSoc = (d.totals.soc_min_settings || []).slice(-1)[0];   // the setting valid on that day
+  document.getElementById("soc-sub").textContent = minSoc == null ? "%" : `%, линия на минималния SOC от настройките ${PV.num(minSoc, 0)}%`;
+  PV.chart("c-soc", (t) => PV.base(t, {
+    tooltip: PV.tooltip(t, () => "%", 0),
+    grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+    xAxis: PV.timeAxis(t),
+    yAxis: PV.valueAxis(t, "%", { min: 0, max: 100, interval: 25 }),
+    series: [PV.line("SOC", at(5), t.battery, {
+      markLine: { silent: true, symbol: "none", lineStyle: { color: t.muted, type: "solid", width: 1 },
+        label: { color: t.muted, formatter: `${PV.num(minSoc ?? 30, 0)}%` }, data: minSoc == null ? [] : [{ yAxis: minSoc }] } })],
+  }));
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  renderNow();
+  setInterval(renderNow, 60000);
+  renderGoals();
+  renderHealth();
+  PV.initFilters(async (s) => { PV.setLoading(true); try { await render(s); } finally { PV.setLoading(false); } });
+});
+{% endblock %}

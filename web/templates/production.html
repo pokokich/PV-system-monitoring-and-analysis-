@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Производство{% endblock %}
+{% block day_filter %}<span class="sep"></span><label>Ден за детайл <input type="date" id="day" min="{{ first_day }}" max="{{ last_day }}"></label>{% endblock %}
+{% block content %}
+<h1>Производство</h1>
+<p class="lead">PV добив общо и по MPPT входове на инвертора (PV1 = {{ mppt1 }}, PV2 = {{ mppt2 }}) и самият инвертор. Данните по стрингове и температурите идват от инвертора; Deye пази тази история само ~90 дни назад, затова започват по-късно от останалите.</p>
+
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Слънцето днес</h2><span class="stamp" id="sun-stamp"></span></div>
+    <p class="subtitle">Слънцето минава по дъгата до сегашния час (на мястото на системата); отдолу е добивът от полунощ</p>
+    <div class="sun-arc" id="sun-arc" role="img"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>PV1 срещу PV2</h2><span class="code">P02</span></div>
+    <p class="subtitle" id="race-sub">специфичен добив за периода, kWh/kWp</p>
+    <div class="race" id="race"></div>
+  </div>
+</div>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="card">
+  <div class="card-head"><h2>PV производство</h2><span class="code">E01</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle" id="pv-sub">kWh</p>
+  <div class="chart" id="c-pv"></div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Специфичен добив по масиви</h2><span class="code">P01 P02</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle">kWh/kWp, т.е. добив спрямо инсталираната мощност; общо за системата и поотделно по MPPT входове</p>
+  <div class="chart" id="c-specific"></div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Мощност по MPPT през деня</h2><span class="code">P02 P07</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle" id="mppt-sub">kW, DC вход на инвертора</p>
+  <div class="chart" id="c-mppt"></div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Напрежение по MPPT</h2><span class="code">P08</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">V</p>
+    <div class="chart short" id="c-volt"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Ток по MPPT</h2><span class="code">P08</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">A</p>
+    <div class="chart short" id="c-amp"></div>
+  </div>
+</div>
+<h2 class="section">Инвертор</h2>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Температура на инвертора през деня</h2><span class="code">I04</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">°C, AC радиатор (DC температура няма в Deye API)</p>
+    <div class="chart short" id="c-invtemp"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Дневен максимум на температурата</h2><span class="code">I04</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">°C, за избрания период</p>
+    <div class="chart short" id="c-invtemp-days"></div>
+  </div>
+</div>
+{% endblock %}
+{% block script %}
+// Sunrise and sunset (NOAA approximation) at the installation, in minutes after midnight UTC.
+const SITE = { lat: {{ site_lat if site_lat is not none else 'null' }}, lon: {{ site_lon if site_lon is not none else 'null' }} };
+const M1 = {{ mppt1|tojson }}, M2 = {{ mppt2|tojson }};
+function sunUtcMinutes(d) {
+  const rad = Math.PI / 180, start = Date.UTC(d.getUTCFullYear(), 0, 0);
+  const g = 2 * Math.PI / 365 * ((d - start) / 864e5 - 1);
+  const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+  const decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g)
+    - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+  const lat = SITE.lat * rad;
+  const ha = Math.acos(Math.cos(90.833 * rad) / (Math.cos(lat) * Math.cos(decl)) - Math.tan(lat) * Math.tan(decl)) / rad;
+  return [720 - 4 * (SITE.lon + ha) - eq, 720 - 4 * (SITE.lon - ha) - eq];
+}
+async function renderSun() {
+  if (SITE.lat === null) {
+    document.getElementById("sun-arc").innerHTML = '<p class="note">Няма координати на системата: въведи ги в Настройки.</p>';
+    return;
+  }
+  const [n, k] = await Promise.all([PV.api("now"), PV.api("kpi", { from: PV.last(), to: PV.last() })]);
+  const now = new Date(), midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const [rise, set] = sunUtcMinutes(now).map((m) => new Date(midnight + m * 6e4));
+  const hm = (d) => d.toLocaleTimeString(PV.locale, { timeZone: PV.tz, hour: "2-digit", minute: "2-digit" });
+  const f = Math.max(0, Math.min(1, (now - rise) / (set - rise)));
+  const P0 = [30, 190], P1 = [300, -60], P2 = [570, 190];
+  const at = (t) => [0, 1].map((i) => (1 - t) ** 2 * P0[i] + 2 * (1 - t) * t * P1[i] + t * t * P2[i]);
+  const el = document.getElementById("sun-arc");
+  el.innerHTML = `<svg viewBox="0 0 600 236" aria-hidden="true"><path class="track" d="M30 190 Q300 -60 570 190"/><path class="done" id="sun-done"/>` +
+    `<line class="horizon" x1="0" y1="190" x2="600" y2="190"/><circle class="halo" id="sun-halo" r="26"/><circle class="sunball" id="sun-ball" r="15"/>` +
+    `<text class="t" x="10" y="214">изгрев ${hm(rise)}</text><text class="t" x="590" y="214" text-anchor="end">залез ${hm(set)}</text>` +
+    `<text class="big" x="300" y="150" text-anchor="middle" id="sun-kwh">–</text><text class="mid" x="300" y="174" text-anchor="middle">kWh днес · сега ${PV.num(n.pv_kw, 1)} kW</text></svg>`;
+  el.setAttribute("aria-label", `Изгрев ${hm(rise)}, залез ${hm(set)}, произведени ${PV.num(k.totals.pv, 1)} kWh днес`);
+  const ball = document.getElementById("sun-ball"), halo = document.getElementById("sun-halo"), done = document.getElementById("sun-done");
+  const place = (t) => {
+    const [x, y] = at(t), c = [P0[0] + t * (P1[0] - P0[0]), P0[1] + t * (P1[1] - P0[1])];
+    [ball, halo].forEach((e) => { e.setAttribute("cx", x); e.setAttribute("cy", y); });
+    done.setAttribute("d", `M30 190 Q${c[0]} ${c[1]} ${x} ${y}`);
+  };
+  const night = now < rise || now > set;
+  ball.style.display = halo.style.display = night ? "none" : "";
+  const t0 = performance.now(), ms = PV.motion() ? 2200 : 0;
+  const step = (t) => { const x = ms ? Math.min(1, (t - t0) / ms) : 1; place(f * (1 - Math.pow(1 - x, 3))); if (x < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+  PV.countUp(document.getElementById("sun-kwh"), PV.num(k.totals.pv, 1), 1800);
+  document.getElementById("sun-stamp").textContent = night ? "нощ" : `сега ${hm(now)}`;
+}
+
+function renderRace(K) {
+  const rows = [[`${M1} (PV1)`, K.P02r.value, "var(--c-roof)"], [`${M2} (PV2)`, K.P02c.value, "var(--c-carport)"]];
+  const max = Math.max(...rows.map((r) => r[1] || 0), 1) * 1.1;
+  const el = document.getElementById("race");
+  el.innerHTML = rows.map(([name, v, c]) => `<div><div class="row"><span><span class="sw" style="background:${c}"></span>${PV.esc(name)}</span><b>${PV.num(v, 1)}</b></div>` +
+    `<div class="track"><div class="fill" style="background:${c}" data-w="${(v || 0) / max * 100}"></div></div></div>`).join("") +
+    (K.P02r.value && K.P02c.value ? `<p class="note">PV2 дава ${PV.num(K.P02c.value / K.P02r.value * 100, 0)}% от добива на PV1 на kWp; разликата идва от ориентацията, наклона и сянката.</p>` : "");
+  requestAnimationFrame(() => requestAnimationFrame(() => el.querySelectorAll(".fill").forEach((f) => { f.style.width = `${f.dataset.w}%`; })));
+}
+
+async function render(state) {
+  const [k, s, inv] = await Promise.all([
+    PV.api("kpi", PV.range()), PV.api("series", PV.range()), PV.api("inverter", { day: state.day }),
+  ]);
+  const K = k.kpis, T = k.totals;
+  renderRace(K);
+  PV.tiles("tiles", [
+    { code: "E01", label: "PV производство", value: PV.num(T.pv, 0), unit: "kWh" },
+    { code: "P01", label: "Добив на kWp (специфичен)", value: PV.num(K.P01.value, 1), unit: "kWh/kWp", sub: `${PV.num(T.pv / Math.max(T.day_frac, 1), 1)} kWh на ден` },
+    { code: "E09", label: "Пикова PV мощност", value: PV.num((T.pv_peak_w || 0) / 1000, 2), unit: "kW", sub: "инвертор 15 kW AC" },
+    { code: "P02", label: "PV1, специфичен добив", value: PV.num(K.P02r.value, 1), unit: "kWh/kWp", sub: `${PV.num(T.pv1, 0)} kWh за ${T.string_days} дни с данни` },
+    { code: "P02", label: "PV2, специфичен добив", value: PV.num(K.P02c.value, 1), unit: "kWh/kWp", sub: `${PV.num(T.pv2, 0)} kWh за ${T.string_days} дни с данни` },
+    { code: "I04", label: "Инвертор, макс. температура", value: PV.num(K.I04.value, 1), unit: "°C", sub: `средно ${PV.num(K.I04a.value, 1)} °C` },
+    { code: "I06", label: "Наличност на данните", value: PV.num(K.I06.value, 1), unit: "%", title: K.I06.note, sub: "по наличие на кадри" },
+    { code: "I07", label: "Аларми на инвертора", value: PV.num(K.I07.value, 0), unit: "", sub: "колекторът още не чете аларми" },
+  ]);
+
+  const rows = s.rows, x = rows.map((r) => r.label);
+  document.getElementById("pv-sub").textContent = s.group === "month" ? "kWh по месеци" : "kWh по дни";
+  PV.chart("c-pv", (t) => PV.base(t, {
+    tooltip: PV.tooltip(t, () => "kWh", 1),
+    grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "kWh"),
+    series: [PV.bar("PV", rows.map((r) => r.pv), t.pv)],
+  }));
+  PV.chart("c-specific", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: PV.tooltip(t, () => "kWh/kWp", 2),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "kWh/kWp"),
+    series: [
+      PV.line("Цялата система", rows.map((r) => r.specific), t.muted, { lineStyle: { width: 2, color: t.muted, type: [6, 4] } }),
+      PV.line(`${M1} (PV1)`, rows.map((r) => r.specific1), t.roof),
+      PV.line(`${M2} (PV2)`, rows.map((r) => r.specific2), t.carport),
+    ],
+  }));
+
+  const S = inv.series;
+  document.getElementById("mppt-sub").textContent = `kW, DC вход на инвертора, ${PV.fmtDate(state.day)}`;
+  const hasInv = S.DCPowerPV1.length > 0;
+  const noData = hasInv ? null : `Няма инверторни данни за ${PV.fmtDate(state.day)} (Deye пази историята по стрингове ~90 дни).`;
+  ["c-mppt", "c-volt", "c-amp", "c-invtemp"].forEach((id) => PV.empty(id, noData));
+  if (hasInv) {
+    const kw = (a) => a.map(([ts, v]) => [ts, v === null ? null : v / 1000]);
+    const two = (id, a, b, unit, digits) => PV.chart(id, (t) => PV.base(t, {
+      legend: PV.legend(t), tooltip: PV.tooltip(t, () => unit, digits),
+      xAxis: PV.timeAxis(t), yAxis: PV.valueAxis(t, unit),
+      series: [PV.line(`${M1} (PV1)`, a, t.roof), PV.line(`${M2} (PV2)`, b, t.carport)],
+    }));
+    two("c-mppt", kw(S.DCPowerPV1), kw(S.DCPowerPV2), "kW", 2);
+    two("c-volt", S.DCVoltagePV1, S.DCVoltagePV2, "V", 0);
+    two("c-amp", S.DCCurrentPV1, S.DCCurrentPV2, "A", 1);
+    PV.chart("c-invtemp", (t) => PV.base(t, {
+      tooltip: PV.tooltip(t, () => "°C", 1), grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+      xAxis: PV.timeAxis(t), yAxis: PV.valueAxis(t, "°C", { scale: true }),
+      series: [PV.line("AC температура", S["AC Temperature"], t.temp)],
+    }));
+  }
+  const hasTemps = rows.some((r) => r.temp_inv_max !== null);
+  PV.empty("c-invtemp-days", hasTemps ? null : "Няма температури за периода (Deye пази инверторната история ~90 дни).");
+  if (hasTemps) PV.chart("c-invtemp-days", (t) => PV.base(t, {
+    tooltip: PV.tooltip(t, () => "°C", 1), grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "°C", { scale: true }),
+    series: [PV.line("Максимум за деня", rows.map((r) => r.temp_inv_max), t.temp)],
+  }));
+}
+document.addEventListener("DOMContentLoaded", () => {
+  renderSun();
+  setInterval(renderSun, 300000);
+  PV.initFilters(async (s) => { PV.setLoading(true); try { await render(s); } finally { PV.setLoading(false); } });
+});
+{% endblock %}

@@ -1,0 +1,28 @@
+# Secrets: never commit credentials
+.env
+.env.*
+!.env.example
+*.rtf
+secrets/
+
+# Local data
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.parquet
+backups/
+tailscale/state/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Personal documents (supplier invoices)
+invoices/
+*.pdf
+
+# UX check screenshots (scripts/ux-check.js)
+ux-shots/

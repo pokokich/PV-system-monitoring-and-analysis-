@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Анализ{% endblock %}
+{% block filters %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/analysis.css">
+<h1>Анализ на системата</h1>
+<p class="lead" id="an-lead">Изводи по компоненти и за системата като цяло, изчислени от данните в базата. Всеки извод показва числата и периода зад себе си
+  и се обновява с новите данни.</p>
+
+<h2 class="section" id="summary">Накратко</h2>
+<section class="an-hero card" aria-label="Обща оценка">
+  <div class="an-pillars" id="an-pillars"></div>
+  <ul class="an-headline" id="an-headline"></ul>
+</section>
+
+<h2 class="section" id="levers">Какво би променило резултата</h2>
+<section class="card" aria-label="Лостове">
+  <p class="subtitle">Оценки за типична година с текущата система, подредени по годишна полза; окупаемостта е по базовия сценарий.
+    Нищо от това не се прави от дашборда: всички настройки са твои.</p>
+  <div class="an-levers" id="an-levers"></div>
+</section>
+
+<h2 class="section" id="year">Типична година</h2>
+<section class="card" aria-labelledby="h-year">
+  <div class="card-head"><h2 id="h-year">Типична година с текущата система</h2><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle" id="year-sub">kWh на месец: използвано и изгубено производство, консумация и внос</p>
+  <div class="chart tall" id="c-year"></div>
+</section>
+
+<h2 class="section" id="components">По компоненти</h2>
+<nav class="an-toc" id="an-toc" aria-label="Компоненти"></nav>
+<div id="an-sections"></div>
+
+<div class="note box" id="an-method">
+  <b>Как се смята.</b> Годишните числа са „типична година с текущата система“: средният ден на всеки месец от последните 365 дни,
+  като дните преди разширението (09.07.2026) са доизчислени с навеса и новите модули, както при прогнозата на целите.
+  Измерените числа са от разширението насам, а тези за стринговете и температурите от 22.07.2026 (по-стари точки Deye не пази).
+  Нивата следват прагове: например панели под 90% от очакваното при свободна батерия, батерия над 40 °C, инвертор над 60 °C.
+  Лостовете са оценки с изписано допускане; зареждането на колата е разпознато като нощни часове с над 3 kWh консумация.
+</div>
+{% endblock %}
+{% block script %}
+const ICON = { good: "✓", watch: "!", bad: "✕", no_data: "–" };
+const badge = (lvl, label, cls = "") => `<span class="badge ${cls} s-${lvl}"><span class="ico" aria-hidden="true">${ICON[lvl]}</span>${PV.esc(label)}</span>`;
+const e = PV.esc;
+
+function evidence(list) {
+  if (!list.length) return "";
+  return `<details class="an-ev"><summary>Числата (${list.length})</summary><table class="an-ev-t"><tbody>${list.map((x) =>
+    `<tr><th scope="row">${e(x.label)}</th><td class="v">${e(x.value)}${x.unit ? "&nbsp;" + e(x.unit) : ""}</td><td class="p">${e(x.period || "")}</td></tr>`).join("")}</tbody></table></details>`;
+}
+
+function section(s) {
+  return `<section class="card an-sec" id="sec-${e(s.key)}" aria-labelledby="h-${e(s.key)}">
+    <div class="card-head"><h2 id="h-${e(s.key)}">${e(s.title)}</h2><span class="an-push">${badge(s.level, PV_LEVEL[s.level])}</span></div>
+    <p class="subtitle">${e(s.summary)}</p>
+    <ol class="an-findings">${s.findings.map((f) => `<li class="an-f lv-${e(f.level)}">
+      <div class="an-f-head">${badge(f.level, f.level_label)}<h3>${e(f.title)}</h3></div>
+      <p>${e(f.text)}</p>${evidence(f.evidence)}</li>`).join("")}</ol>
+  </section>`;
+}
+const PV_LEVEL = { good: "добро", watch: "за наблюдение", bad: "проблем", no_data: "няма данни" };
+
+async function load() {
+  const A = await PV.api("analysis");
+  if (!A.overall) { document.getElementById("an-sections").innerHTML = `<p class="empty">Няма данни за анализ.</p>`; return; }
+  document.getElementById("an-lead").textContent =
+    `Изводи по компоненти и за системата като цяло, изчислени от данните към ${PV.fmtDate(A.as_of)}. Всеки извод показва числата и периода зад себе си и се обновява с новите данни.`;
+  document.getElementById("an-pillars").innerHTML = A.overall.pillars.map((p) => `<div class="an-pillar lv-${e(p.level)}">
+    <div class="label">${e(p.label)}</div><div class="value">${e(p.value)}</div>
+    <div class="sub">${badge(p.level, p.level_label)} <span>${e(p.sub)}</span></div></div>`).join("");
+  document.getElementById("an-headline").innerHTML = A.overall.headline.map((h) => `<li>${e(h)}</li>`).join("");
+
+  const toc = A.sections.map((s) => [`sec-${s.key}`, s.title, s.level]);
+  document.getElementById("an-toc").innerHTML = toc.map(([id, t, l]) =>
+    `<a href="#${e(id)}">${l ? `<span class="dot s-${e(l)}" aria-hidden="true"></span>` : ""}${e(t)}</a>`).join("");
+
+  const maxEur = Math.max(1, ...A.levers.map((l) => l.eur_year || 0));
+  document.getElementById("an-levers").innerHTML = A.levers.map((l) => `<article class="an-lever">
+    <div class="an-lever-head"><h3>${e(l.title)}</h3>
+      <div class="an-lever-num"><b>${l.eur_year ? "~" + PV.num(l.eur_year, 0) + " {{ ccy }}/год" : "стойност: неизвестна"}</b>
+      <span>${l.payback_years ? "окупаемост " + PV.num(l.payback_years, 1) + " г." : PV.num(l.kwh_year, 0) + " kWh/год"}</span></div></div>
+    <div class="meter" role="img" aria-label="${e(PV.num(l.eur_year, 0))} {{ ccy }} на година"><span style="width:${(l.eur_year || 0) / maxEur * 100}%"></span></div>
+    <p>${e(l.text)}</p>
+    <p class="sub"><b>Кой:</b> ${e(l.who)} · <b>Допускане:</b> ${e(l.assumption)}${l.eur_year ? ` · ${PV.num(l.kwh_year, 0)} kWh/год` : ""}</p>
+  </article>`).join("");
+
+  const Yr = A.year, x = Yr.map((r) => r.month);
+  if (A.estimated_months.length) {
+    const names = ["яну", "фев", "мар", "апр", "май", "юни", "юли", "авг", "сеп", "окт", "ное", "дек"];
+    document.getElementById("year-sub").textContent += `; ${A.estimated_months.map((m) => names[m - 1]).join(", ")} без данни, взети от съседните месеци`;
+  }
+  PV.chart("c-year", (t) => PV.base(t, {
+    legend: PV.barLegend(t), tooltip: PV.tooltip(t, () => "kWh", 0),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "kWh"),
+    series: [
+      PV.stackBar(t, "PV използвано", Yr.map((r) => r.pv), t.pv),
+      PV.stackBar(t, "PV изгубено (ограничаване)", Yr.map((r) => r.curtailed), t.seq[1]),
+      PV.line("Консумация", Yr.map((r) => r.load), t.load, { showSymbol: true }),
+      PV.line("Внос", Yr.map((r) => r.imp), t.gridImp, { showSymbol: true, lineStyle: { width: 2, color: t.gridImp, type: [6, 4] } }),
+    ],
+  }));
+  document.getElementById("an-sections").innerHTML = A.sections.map(section).join("");
+}
+document.addEventListener("DOMContentLoaded", async () => {
+  PV.setLoading(true);
+  try { await load(); }
+  catch (err) { document.getElementById("an-sections").innerHTML = `<p class="empty">Анализът не се зареди: ${e(err.message)}</p>`; }
+  finally { PV.setLoading(false); }
+});
+{% endblock %}

@@ -1,0 +1,114 @@
+services:
+  collector:
+    build: .
+    image: deyehome
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/pv.sqlite
+    volumes:
+      - ./data:/data
+      - ./invoices:/invoices:ro
+
+  # Dashboard: reads the same database, never talks to Deye and gets no Deye credentials.
+  # It writes only the manual data (goals, scenarios, parameters, tariffs, CAPEX/OPEX, invoices;
+  # web/settings.py: an SQLite authorizer refuses every other table). Changes are accepted only
+  # from its own pages, and with WRITE_PASSWORD set only after the password (web/security.py).
+  web:
+    build: .
+    image: deyehome
+    restart: unless-stopped
+    command: ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8088"]
+    environment:
+      DB_PATH: /data/pv.sqlite
+      TZ: Europe/Sofia
+      WRITE_PASSWORD: ${WRITE_PASSWORD:-}
+      STALE_MINUTES: ${STALE_MINUTES:-45}
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/healthz', timeout=10)"]
+      interval: 2m
+      timeout: 15s
+      retries: 3
+    ports:
+      - "${WEB_PORT:-8088}:8088"   # port on the host: WEB_PORT in .env, default 8088
+    depends_on:
+      - collector
+
+  # Guard: daily consistent backup of the database into BACKUP_DIR (default ./backups) and
+  # alerts when data stops coming. Gets no Deye credentials, only the optional alert settings.
+  guard:
+    image: deyehome
+    restart: unless-stopped
+    command: ["python", "-m", "collector.guard", "run"]
+    environment:
+      DB_PATH: /data/pv.sqlite
+      TZ: Europe/Sofia
+      BACKUP_PATH: /backups
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      STALE_MINUTES: ${STALE_MINUTES:-45}
+      ALERT_REPEAT_HOURS: ${ALERT_REPEAT_HOURS:-12}
+      WEB_HEALTH_URL: http://web:8088/healthz
+      TUNNEL_PUBLIC_URL: ${TUNNEL_PUBLIC_URL:-}
+      TUNNEL_READY_URL: ${TUNNEL_READY_URL:-http://tunnel:2000/ready}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      NTFY_URL: ${NTFY_URL:-}
+    volumes:
+      - ./data:/data
+      - "${BACKUP_DIR:-./backups}:/backups"
+    depends_on:
+      - collector
+      - web
+
+  # Public access, one of two (docs/08-public-access.md); COMPOSE_PROFILES in .env picks it, so
+  # every `docker compose up -d --build` also brings it up. Both connect outbound only, no open
+  # port on the router.
+  # tunnel: Cloudflare named tunnel, needs a domain on Cloudflare DNS (COMPOSE_PROFILES=tunnel, TUNNEL_TOKEN).
+  tunnel:
+    image: cloudflare/cloudflared:2026.2.0
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "localhost:2000", "ready"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - web
+
+  # funnel: Tailscale Funnel, free and without a domain: https://<TS_HOSTNAME>.<tailnet>.ts.net
+  # (COMPOSE_PROFILES=funnel, TS_AUTHKEY once; the login is then kept in ./tailscale/state).
+  funnel:
+    image: tailscale/tailscale:v1.92.4
+    profiles: ["funnel"]
+    restart: unless-stopped
+    hostname: ${TS_HOSTNAME:-pv-home}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: ${TS_HOSTNAME:-pv-home}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_ENABLE_HEALTH_CHECK: "true"
+      TS_LOCAL_ADDR_PORT: 0.0.0.0:9002
+    volumes:
+      - ./tailscale/state:/var/lib/tailscale
+      - ./tailscale/serve.json:/config/serve.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9002/healthz"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - web

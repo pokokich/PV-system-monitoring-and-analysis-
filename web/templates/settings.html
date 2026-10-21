@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+{% block title %}Настройки{% endblock %}
+{% block filters %}{% endblock %}
+{% block content %}
+<style>
+  .set-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; position: sticky; top: 0; z-index: 5; background: var(--page); padding: 8px 0; }
+  .set-nav a { text-decoration: none; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; font-size: 13px; background: var(--surface); }
+  .set-nav a:hover, .set-nav a:focus-visible { color: var(--text-primary); border-color: var(--text-secondary); }
+  section.set { scroll-margin-top: 56px; margin-bottom: 8px; }
+  section.set > h1 { font-size: 17px; margin: 20px 0 4px; }
+  .drop { display: block; position: relative; border: 2px dashed var(--border); border-radius: 10px; padding: 18px; text-align: center; color: var(--text-secondary); cursor: pointer; }
+  .drop.over, .drop:focus-within { border-color: var(--accent); color: var(--text-primary); }
+  .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .drop b { color: var(--accent); }
+  .preview { margin-top: 12px; }
+  .preview dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 8px 0; font-size: 14px; }
+  .preview dt { color: var(--text-secondary); }
+  .preview dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .preview .checks { margin: 8px 0; }
+  .warn-box { border-left: 3px solid var(--s-warn); padding: 6px 10px; background: var(--page); border-radius: 4px; font-size: 13px; margin: 8px 0; }
+  .ok-box { border-left: 3px solid var(--s-good); padding: 6px 10px; background: var(--page); border-radius: 4px; font-size: 13px; margin: 8px 0; }
+  table.data td.txt, table.data th.txt { text-align: left; white-space: normal; min-width: 120px; }
+  table.data td .tag { font-size: 11px; border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; color: var(--text-secondary); }
+  table.data td button { font: inherit; font-size: 12px; color: var(--text-secondary); background: none; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+  table.data tr.closed td { color: var(--text-muted); }
+  .card-head .btn { margin-left: auto; font-size: 13px; }
+  .hist { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+  .hist li { display: flex; gap: 10px; align-items: center; padding: 3px 0; border-bottom: 1px solid var(--grid); }
+  .hist li span:first-child { min-width: 90px; color: var(--text-secondary); }
+  .hist li button { margin-left: auto; }
+  .field-hint { color: var(--text-muted); font-size: 12px; }
+  .ro-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 24px; font-size: 13px; }
+  .ro-list div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--grid); padding: 3px 0; }
+  .ro-list span:first-child { color: var(--text-secondary); }
+</style>
+
+<h1>Настройки</h1>
+<p class="lead">Всички ръчни параметри на системата и фактурите за ток на едно място. Промените важат веднага за всички страници.
+  Данните от Deye и настройките на инвертора тук само се показват; сайтът не променя нищо по системата.</p>
+
+<nav class="set-nav" aria-label="Раздели">
+  <a href="#invoices">Фактури за ток</a><a href="#system">Панели и батерия</a><a href="#prices">Цени на тока</a>
+  <a href="#money">Инвестиция и разходи</a><a href="#params">Модели и параметри</a><a href="#inverter">Инвертор</a><a href="/goals">Цели и сценарии →</a>
+</nav>
+
+<section class="set" id="invoices">
+  <h1>Фактури за ток</h1>
+  <div class="tiles" id="inv-tiles"></div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-head"><h2>Качи PDF фактура (Електрохолд, България)</h2></div>
+      <p class="subtitle">Прочитам номера, периода, kWh по дневна и нощна тарифа, сумите и цените по редове. Преди запис виждаш какво е прочетено.
+        При запис тарифите се обновяват от цените във фактурите.</p>
+      <label class="drop" id="drop">
+        <input type="file" id="pdf" accept="application/pdf,.pdf">
+        <span>Пусни PDF тук или <b>избери файл</b></span>
+      </label>
+      <div class="preview" id="preview" hidden></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Въведи фактура ръчно</h2></div>
+      <p class="subtitle">Достатъчни са периодът, kWh по дневна и нощна тарифа и сумата за плащане. Данъчната основа се смята от сумата,
+        ако не я въведеш (ДДС 20%). Ползва се за сметката по електромера и средната сметка преди и след PV.</p>
+      <p><button type="button" class="btn primary" id="add-invoice">+ Нова фактура</button></p>
+      <div id="gaps"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Въведени фактури</h2><span class="code">G01 D04</span></div>
+    <p class="subtitle">„Deye“ е вносът от мрежата, измерен от инвертора за същия период (само за периоди изцяло с данни от Deye).
+      Разликата спрямо електромера се добавя към вноса и консумацията, така че сметката съвпада с фактурите.</p>
+    <div class="table-wrap"><table class="data" id="inv-table"></table></div>
+  </div>
+</section>
+
+<section class="set" id="system">
+  <h1>Панели и батерия</h1>
+  <div class="card" data-table-card="pv_array"></div>
+  <div class="card" data-table-card="battery_config"></div>
+</section>
+
+<section class="set" id="prices">
+  <h1>Цени на тока</h1>
+  <div class="card" data-table-card="tariff"></div>
+  <div class="grid2">
+    <div class="card" data-table-card="feed_in_price"></div>
+    <div class="card" data-param-card="economy"></div>
+  </div>
+</section>
+
+<section class="set" id="money">
+  <h1>Инвестиция и разходи</h1>
+  <div class="card" data-table-card="capex_item"></div>
+  <div class="card" data-table-card="opex_item"></div>
+</section>
+
+<section class="set" id="params">
+  <h1>Модели и параметри</h1>
+  <p class="lead">Целите, сценариите за окупаемост и бизнес планът са на страница <a href="/goals">Цели</a>. Тук са числата, на които стъпват моделите.</p>
+  <div class="grid2">
+    <div class="card" data-param-card="site"></div>
+    <div class="card" data-param-card="goal"></div>
+  </div>
+  <div class="card" data-param-card="health"></div>
+  <div class="card" data-param-card="other"></div>
+</section>
+
+<section class="set" id="inverter">
+  <h1>Инвертор (само четене)</h1>
+  <p class="lead">Настройките, които колекторът чете от Deye. Сменят се само от приложението Deye; тук се виждат, за да е ясно с какво работи системата.</p>
+  <div id="device"></div>
+</section>
+
+<dialog id="row-dialog">
+  <form method="dialog" class="form" id="row-form">
+    <h2 id="row-title"></h2>
+    <div id="row-fields"></div>
+    <p class="field-hint" id="row-hint"></p>
+    <p class="form-error" id="row-error" role="alert"></p>
+    <div class="actions">
+      <button type="button" class="btn danger" id="row-delete">Изтрий</button>
+      <span style="flex:1"></span>
+      <button type="button" class="btn" id="row-cancel">Отказ</button>
+      <button type="submit" class="btn primary">Запази</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="param-dialog">
+  <form method="dialog" class="form" id="param-form">
+    <h2 id="param-title"></h2>
+    <p class="field-hint" id="param-note"></p>
+    <label>Стойность <input name="value" type="number" step="any" required></label>
+    <fieldset style="border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:6px">
+      <label class="check"><input type="radio" name="mode" value="correct" checked> поправи стойността от <span id="param-from"></span></label>
+      <label class="check"><input type="radio" name="mode" value="new"> нова стойност, която важи от дата нататък</label>
+    </fieldset>
+    <label id="param-date-l" hidden>От дата <input name="valid_from" type="date"></label>
+    <div><div class="field-hint">История</div><ul class="hist" id="param-hist"></ul></div>
+    <p class="form-error" id="param-error" role="alert"></p>
+    <div class="actions">
+      <span style="flex:1"></span>
+      <button type="button" class="btn" id="param-cancel">Отказ</button>
+      <button type="submit" class="btn primary">Запази</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block script %}
+let S = null, INV_FIELDS = null;
+const $ = (id) => document.getElementById(id);
+
+// columns shown in each table; the dialog shows every field
+const COLUMNS = {
+  pv_array: ["name", "mppt_channel", "panels", "panel_wp", "kwp", "azimuth_deg", "tilt_deg", "valid_from", "valid_to", "status"],
+  battery_config: ["modules", "kwh_per_module", "kwh", "soc_min_normal", "valid_from", "valid_to", "status", "note"],
+  tariff: ["zone", "price_per_kwh", "vat_included", "price_with_vat", "valid_from", "valid_to", "source"],
+  feed_in_price: ["price_per_kwh", "valid_from", "valid_to", "contract_ref"],
+  capex_item: ["date", "description", "amount_ccy", "status", "document_ref"],
+  opex_item: ["date", "description", "amount_ccy", "category"],
+};
+const EXTRA = {
+  kwp: { label: "kWp", value: (r) => PV.num(r.panels * r.panel_wp / 1000, 2) },
+  kwh: { label: "kWh общо", value: (r) => PV.num(r.modules * r.kwh_per_module, 2) },
+  price_with_vat: { label: "Цена с ДДС, {{ ccy }}/kWh", value: (r) => PV.num(r.price_with_vat, 5) },
+  source: { label: "Източник", value: (r) => `<span class="tag">${r.from_invoices ? "от фактурите" : "ръчно"}</span>` },
+};
+const HINT = {
+  tariff: "Цената е с всички такси (енергия, акциз, пренос и достъп). Редовете „от фактурите“ се преизчисляват при всяко качване на PDF; ръчен ред с по-късна начална дата има предимство. Часовете на нощната зона са в „Обща информация“ по-горе (нощни часове на тарифата).",
+  pv_array: "Нов масив без дата „До“ затваря стария на същия MPPT вход. Промяна на ориентацията пресмята PVGIS при следващото пускане на колектора.",
+  battery_config: "Нова конфигурация без дата „До“ затваря предишната (например при добавяне на модули).",
+  feed_in_price: "Без договор за продажба остави празно; системата е на нулев износ.",
+  capex_item: "Сумите с ДДС, в евро. Влизат в окупаемостта от датата си.",
+  opex_item: "Разходи след пускането (сервиз, почистване, застраховка); намаляват нетната полза в деня си.",
+};
+
+function cell(f, v) {
+  if (v === null || v === undefined || v === "") return "–";
+  if (f.type === "date") return PV.fmtDate(v);
+  if (f.type === "bool") return v ? "да" : "не";
+  if (f.type === "select") { const o = f.options.find((x) => x[0] === v); return PV.esc(o ? o[1] : v); }
+  if (f.type === "number" || f.type === "int") {
+    const d = f.step && f.step < 0.01 ? 5 : f.step === 0.01 ? 2 : Number.isInteger(v) ? 0 : 2;
+    return PV.num(v, d);
+  }
+  return PV.esc(v);
+}
+
+function renderTable(name) {
+  const t = S.tables[name], box = document.querySelector(`[data-table-card="${name}"]`);
+  const fields = Object.fromEntries(t.fields.map((x) => [x.key, x]));
+  const cols = COLUMNS[name];
+  const head = cols.map((c) => {
+    const f = fields[c], lbl = f ? f.label + (f.unit ? `, ${f.unit}` : "") : EXTRA[c].label;
+    return `<th class="${f && f.type === "text" ? "txt" : ""}">${PV.esc(lbl)}</th>`;
+  }).join("");
+  const today = new Date().toISOString().slice(0, 10);
+  const body = t.rows.map((r, i) => `<tr class="${r.valid_to && r.valid_to <= today ? "closed" : ""}">${cols.map((c) =>
+    `<td class="${fields[c] && fields[c].type === "text" ? "txt" : ""}">${fields[c] ? cell(fields[c], r[c]) : EXTRA[c].value(r)}</td>`).join("")}
+    <td><button type="button" data-edit="${i}" aria-label="Промени ред ${i + 1}">Промени</button></td></tr>`).join("");
+  box.innerHTML = `<div class="card-head"><h2>${PV.esc(t.title)}</h2><button type="button" class="btn" data-add>+ Добави</button></div>
+    <p class="subtitle">${PV.esc(HINT[name] || "")}</p>
+    <div class="table-wrap"><table class="data"><thead><tr>${head}<th></th></tr></thead><tbody>${body ||
+      `<tr><td colspan="${cols.length + 1}" class="muted">няма записи</td></tr>`}</tbody></table></div>`;
+  box.querySelector("[data-add]").onclick = () => openRow(name, null);
+  box.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => openRow(name, t.rows[+b.dataset.edit]));
+}
+
+// ------------------------------------------------------------ generic row dialog
+let rowCtx = null;
+function input(f, v) {
+  const id = `f-${f.key}`, req = f.required ? " required" : "", lbl = PV.esc(f.label + (f.unit ? `, ${f.unit}` : "")) + (f.required ? " *" : "");
+  if (f.type === "bool") return `<label class="check"><input type="checkbox" name="${f.key}" ${v ? "checked" : ""}> ${PV.esc(f.label)}</label>`;
+  if (f.type === "select") return `<label for="${id}">${lbl}<select id="${id}" name="${f.key}"${req}>${f.required ? "" : '<option value="">–</option>'}${
+    f.options.map((o) => `<option value="${o[0]}" ${o[0] === v ? "selected" : ""}>${PV.esc(o[1])}</option>`).join("")}</select></label>`;
+  const type = f.type === "date" ? "date" : f.type === "text" ? "text" : "number";
+  const extra = type === "number" ? ` step="${f.step || (f.type === "int" ? 1 : "any")}"${f.min !== undefined ? ` min="${f.min}"` : ""}${f.max !== undefined ? ` max="${f.max}"` : ""} inputmode="decimal"`
+    : f.maxlength ? ` maxlength="${f.maxlength}"` : "";
+  return `<label for="${id}">${lbl}<input id="${id}" name="${f.key}" type="${type}"${extra}${req} value="${v === null || v === undefined ? "" : PV.esc(v)}"></label>`;
+}
+function openDialog(title, fields, row, hint, onSave, onDelete) {
+  rowCtx = { fields, onSave, onDelete };
+  $("row-title").textContent = title;
+  $("row-fields").innerHTML = `<div class="row">${fields.map((f) => input(f, row ? row[f.key] : (f.type === "bool" ? 1 : null))).join("")}</div>`;
+  $("row-hint").textContent = hint || "";
+  $("row-error").textContent = "";
+  $("row-delete").hidden = !onDelete;
+  $("row-dialog").showModal();
+}
+function openRow(name, row) {
+  const t = S.tables[name];
+  const del = row && t.can_delete ? () => send("DELETE", `settings/table/${name}/${row.id}`) : null;
+  openDialog(`${t.title}: ${row ? "промяна" : "нов запис"}`, t.fields, row, HINT[name],
+    (body) => send(row ? "PUT" : "POST", row ? `settings/table/${name}/${row.id}` : `settings/table/${name}`, body), del);
+}
+async function send(method, path, body) {
+  const res = await fetch(`/api/${path}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  const js = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof js.detail === "string" ? js.detail : `Грешка ${res.status}`);
+  return js;
+}
+$("row-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData($("row-form")), body = {};
+  rowCtx.fields.forEach((f) => { body[f.key] = f.type === "bool" ? fd.has(f.key) : fd.get(f.key); });
+  try { await rowCtx.onSave(body); $("row-dialog").close(); load(); }
+  catch (err) { $("row-error").textContent = err.message; }
+});
+$("row-cancel").onclick = () => $("row-dialog").close();
+$("row-delete").onclick = async () => {
+  if (!confirm("Да изтрия ли записа?")) return;
+  try { await rowCtx.onDelete(); $("row-dialog").close(); load(); } catch (err) { $("row-error").textContent = err.message; }
+};
+
+// ------------------------------------------------------------ params
+let paramCtx = null;
+function renderParams() {
+  for (const [g, title] of S.param_groups) {
+    const box = document.querySelector(`[data-param-card="${g}"]`);
+    if (!box) continue;
+    const items = S.params.filter((p) => p.group === g);
+    box.hidden = !items.length;
+    box.innerHTML = `<div class="card-head"><h2>${PV.esc(title)}</h2></div>
+      <div class="table-wrap" style="max-height:none"><table class="data"><thead><tr><th class="txt">Параметър</th><th>Стойност</th><th>От</th><th></th></tr></thead><tbody>${
+      items.map((p) => `<tr><td class="txt" title="${PV.esc(p.note || "")}">${PV.esc(p.label)}${p.history.length > 1 ? ` <span class="tag">${p.history.length} стойности</span>` : ""}</td>
+        <td>${PV.num(p.value, Number.isInteger(p.value) ? 0 : p.value < 1 ? 4 : 2)} ${PV.esc(p.unit && p.unit !== "fraction" ? p.unit : "")}</td><td>${PV.fmtDate(p.valid_from)}</td>
+        <td><button type="button" data-key="${PV.esc(p.key)}">Промени</button></td></tr>`).join("")}</tbody></table></div>`;
+    box.querySelectorAll("[data-key]").forEach((b) => b.onclick = () => openParam(S.params.find((p) => p.key === b.dataset.key)));
+  }
+}
+function openParam(p) {
+  paramCtx = p;
+  const f = $("param-form");
+  $("param-title").textContent = p.label;
+  $("param-note").textContent = [p.note, p.min !== null ? `Допустимо: ${p.min} – ${p.max}` : ""].filter(Boolean).join(" · ");
+  f.value.value = p.value;
+  if (p.min !== null) { f.value.min = p.min; f.value.max = p.max; } else { f.value.removeAttribute("min"); f.value.removeAttribute("max"); }
+  f.mode.value = "correct";
+  $("param-date-l").hidden = true;
+  f.valid_from.value = new Date().toISOString().slice(0, 10);
+  $("param-from").textContent = PV.fmtDate(p.valid_from);
+  $("param-hist").innerHTML = p.history.slice().reverse().map((h) => `<li><span>от ${PV.fmtDate(h.valid_from)}</span><b>${PV.num(h.value, Number.isInteger(h.value) ? 0 : 4)}</b>${
+    p.history.length > 1 ? `<button type="button" class="btn danger" data-del="${h.valid_from}">Изтрий</button>` : ""}</li>`).join("");
+  $("param-hist").querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
+    if (!confirm(`Да изтрия ли стойността от ${PV.fmtDate(b.dataset.del)}?`)) return;
+    try { await send("DELETE", `settings/param/${encodeURIComponent(p.key)}/${b.dataset.del}`); $("param-dialog").close(); load(); }
+    catch (err) { $("param-error").textContent = err.message; }
+  });
+  $("param-error").textContent = "";
+  $("param-dialog").showModal();
+}
+$("param-form").addEventListener("change", (e) => { if (e.target.name === "mode") $("param-date-l").hidden = e.target.value !== "new"; });
+$("param-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = $("param-form");
+  const body = { value: f.value.value, mode: f.mode.value };
+  if (f.mode.value === "new") body.valid_from = f.valid_from.value;
+  try { await send("PUT", `settings/param/${encodeURIComponent(paramCtx.key)}`, body); $("param-dialog").close(); load(); }
+  catch (err) { $("param-error").textContent = err.message; }
+});
+$("param-cancel").onclick = () => $("param-dialog").close();
+
+// ------------------------------------------------------------ invoices
+function renderInvoices() {
+  const inv = S.invoices, pv = S.pv_start;
+  const before = inv.filter((x) => pv && x.period_to < pv).slice(-12), after = inv.filter((x) => pv && x.period_from >= pv);
+  const avg = (a) => a.length ? a.reduce((s, x) => s + x.total_ccy, 0) / a.length : null;
+  PV.tiles("inv-tiles", [
+    { label: "Фактури", value: PV.num(inv.length, 0), sub: inv.length ? `${PV.fmtDate(inv[0].period_from)} – ${PV.fmtDate(inv[inv.length - 1].period_to)}` : "" },
+    { label: "Средна сметка преди PV", value: PV.num(avg(before), 0), unit: "{{ ccy }}/мес", sub: `последните ${before.length} фактури преди ${PV.fmtDate(pv)}` },
+    { label: "Средна сметка с PV", value: PV.num(avg(after), 0), unit: "{{ ccy }}/мес", sub: `${after.length} фактури` },
+    { label: "Липсващи периоди", value: PV.num(S.invoice_gaps.length, 0), sub: S.invoice_gaps.length ? "виж вдясно" : "няма пропуски" },
+  ]);
+  $("gaps").innerHTML = S.invoice_gaps.map((g) => `<div class="warn-box">Липсва фактура за ${PV.fmtDate(g.from)} – ${PV.fmtDate(g.to)}.
+    <button type="button" class="btn" data-gap="${g.from}|${g.to}">Въведи</button></div>`).join("");
+  $("gaps").querySelectorAll("[data-gap]").forEach((b) => b.onclick = () => {
+    const [from, to] = b.dataset.gap.split("|"); openInvoice(null, { period_from: from, period_to: to });
+  });
+  const rows = inv.slice().reverse();
+  $("inv-table").innerHTML = `<thead><tr><th>Период</th><th>№</th><th>Дневна, kWh</th><th>Нощна, kWh</th><th>Общо, kWh</th><th>Deye, kWh</th>
+    <th>Сума с ДДС, {{ ccy }}</th><th>{{ ccy }}/kWh</th><th class="txt">Източник</th><th></th></tr></thead><tbody>${rows.map((x, i) => `<tr>
+    <td>${PV.fmtDate(x.period_from)} – ${PV.fmtDate(x.period_to)}</td><td>${PV.esc(x.invoice_no)}</td>
+    <td>${PV.num(x.day_kwh, 0)}</td><td>${PV.num(x.night_kwh, 0)}</td><td>${PV.num(x.kwh, 0)}</td>
+    <td class="${x.deye_kwh === null ? "muted" : ""}">${x.deye_kwh === null ? "–" : PV.num(x.deye_kwh, 0)}</td>
+    <td>${PV.num(x.total_ccy, 2)}</td><td>${PV.num(x.eur_per_kwh, 3)}</td>
+    <td class="txt"><span class="tag">${x.manual ? "ръчно" : x.sub_periods > 1 ? `PDF, ${x.sub_periods} подпериода` : "PDF"}</span></td>
+    <td><button type="button" data-inv="${i}">Промени</button></td></tr>`).join("") ||
+    '<tr><td colspan="10" class="muted">няма фактури</td></tr>'}</tbody>`;
+  $("inv-table").querySelectorAll("[data-inv]").forEach((b) => b.onclick = () => openInvoice(rows[+b.dataset.inv]));
+}
+function openInvoice(row, preset) {
+  const hint = row && !row.manual ? "Фактура от PDF: ако смениш периода или kWh, редовете с цените отпадат и тя става ръчна." : "Номерът е по желание.";
+  openDialog(row ? `Фактура ${row.invoice_no}` : "Нова фактура", INV_FIELDS.fields, row || preset, hint,
+    (body) => send(row ? "PUT" : "POST", row ? `settings/invoices/${encodeURIComponent(row.invoice_no)}` : "settings/invoices", body),
+    row ? () => send("DELETE", `settings/invoices/${encodeURIComponent(row.invoice_no)}`) : null);
+}
+$("add-invoice").onclick = () => openInvoice(null);
+
+let pdfBytes = null, pdfName = "";
+async function uploadPdf(file) {
+  const box = $("preview");
+  box.hidden = false;
+  box.innerHTML = '<p class="note">Чета фактурата…</p>';
+  pdfBytes = await file.arrayBuffer();
+  pdfName = file.name;
+  try {
+    const res = await fetch(`/api/settings/invoices/pdf?filename=${encodeURIComponent(pdfName)}`, { method: "POST", headers: { "Content-Type": "application/pdf" }, body: pdfBytes });
+    const p = await res.json();
+    if (!res.ok) throw new Error(p.detail || `Грешка ${res.status}`);
+    const ok = p.checks.every((c) => c.ok);
+    box.innerHTML = `<h2 style="font-size:15px;margin:0">Фактура ${PV.esc(p.invoice_no)} от ${PV.fmtDate(p.issued)}</h2>
+      <dl><dt>Период</dt><dd>${PV.fmtDate(p.period_from)} – ${PV.fmtDate(p.period_to)}${p.sub_periods > 1 ? ` (${p.sub_periods} подпериода с различни цени)` : ""}</dd>
+      <dt>Дневна</dt><dd>${PV.num(p.day_kwh, 0)} kWh</dd><dt>Нощна</dt><dd>${PV.num(p.night_kwh, 0)} kWh</dd>
+      <dt>Енергия / мрежа</dt><dd>${PV.num(p.energy_ccy, 2)} / ${PV.num(p.network_ccy, 2)} {{ ccy }} без ДДС</dd>
+      <dt>Основа + ДДС</dt><dd>${PV.num(p.tax_base_ccy, 2)} + ${PV.num(p.vat_ccy, 2)} {{ ccy }}</dd>
+      <dt>За плащане</dt><dd>${PV.num(p.total_ccy, 2)} {{ ccy }}${p.currency === "BGN" ? " (превърнато от лева по 1.95583)" : ""}</dd></dl>
+      <ul class="checks">${p.checks.map((c) => `<li><span class="badge s-${c.ok ? "good" : "watch"}"><span class="ico" aria-hidden="true">${c.ok ? "✓" : "!"}</span>${PV.esc(c.label)}</span></li>`).join("")}</ul>
+      ${p.exists ? '<div class="warn-box">Тази фактура вече е въведена; записът ще я замени.</div>' : ""}
+      ${p.overlaps ? `<div class="warn-box">Периодът се застъпва с фактура ${PV.esc(p.overlaps.invoice_no)}. Изтрий или поправи нея първо.</div>` : ""}
+      ${ok ? "" : '<div class="warn-box">Някоя проверка не минава; провери числата спрямо хартиената фактура преди запис.</div>'}
+      <div class="actions" style="display:flex;gap:8px"><button type="button" class="btn primary" id="pdf-save" ${p.overlaps ? "disabled" : ""}>Запиши фактурата</button>
+      <button type="button" class="btn" id="pdf-cancel">Откажи</button></div><p class="form-error" id="pdf-error" role="alert"></p>`;
+    $("pdf-cancel").onclick = () => { box.hidden = true; pdfBytes = null; };
+    $("pdf-save").onclick = savePdf;
+  } catch (err) {
+    box.innerHTML = `<div class="warn-box">${PV.esc(err.message)}</div>`;
+  }
+}
+async function savePdf() {
+  try {
+    const res = await fetch(`/api/settings/invoices/pdf?save=true&filename=${encodeURIComponent(pdfName)}`, { method: "POST", headers: { "Content-Type": "application/pdf" }, body: pdfBytes });
+    const p = await res.json();
+    if (!res.ok) throw new Error(p.detail || `Грешка ${res.status}`);
+    $("preview").innerHTML = `<div class="ok-box">Фактура ${PV.esc(p.invoice_no)} е записана. Тарифите са обновени от фактурите (${p.tariff_periods} ценови периода).</div>`;
+    pdfBytes = null;
+    load();
+  } catch (err) { $("pdf-error").textContent = err.message; }
+}
+const drop = $("drop");
+$("pdf").addEventListener("change", (e) => { if (e.target.files[0]) uploadPdf(e.target.files[0]); e.target.value = ""; });
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => { const file = e.dataTransfer.files[0]; if (file) uploadPdf(file); });
+
+// ------------------------------------------------------------ inverter (read-only)
+function renderDevice() {
+  $("device").innerHTML = S.device.map((d) => `<div class="card"><div class="card-head"><h2>${PV.esc(d.title)}</h2>
+    <span class="code">прочетено ${new Date(d.fetched_at * 1000).toLocaleString(PV.locale)}</span></div>
+    <div class="ro-list">${d.items.map((x) => `<div><span>${PV.esc(x.label)}</span><span>${PV.esc(x.value)}</span></div>`).join("")}</div></div>`).join("") ||
+    '<p class="empty">Колекторът още не е прочел настройките на инвертора.</p>';
+}
+
+async function load() {
+  try {
+    [S, INV_FIELDS] = await Promise.all([PV.api("settings"), INV_FIELDS ? INV_FIELDS : PV.api("settings/invoice-fields")]);
+  } catch (err) {
+    document.querySelector("main").insertAdjacentHTML("afterbegin", `<div class="warn-box">Настройките не се заредиха: ${PV.esc(err.message)}</div>`);
+    return;
+  }
+  renderInvoices();
+  Object.keys(COLUMNS).forEach(renderTable);
+  renderParams();
+  renderDevice();
+}
+load();
+{% endblock %}

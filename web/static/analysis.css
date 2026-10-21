@@ -1,0 +1,48 @@
+/* Analysis page (/analysis); shared tokens and components come from style.css. */
+.an-pillars { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.an-pillar { border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.an-pillar.lv-good { border-left-color: var(--s-good); }
+.an-pillar.lv-watch { border-left-color: var(--s-warn); }
+.an-pillar.lv-bad { border-left-color: var(--s-bad); }
+.an-pillar .label { color: var(--text-secondary); font-size: 13px; }
+.an-pillar .value { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 2px 0 4px; }
+.an-pillar .sub { color: var(--text-muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.an-pillar .sub .badge { font-size: 12px; }
+.an-headline { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; max-width: 980px; }
+.an-toc { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 16px; font-size: 14px; }
+.an-toc a { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.an-toc a:hover, .an-toc a:focus-visible { text-decoration: underline; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); display: inline-block; }
+.dot.s-good { background: var(--s-good); }
+.dot.s-watch { background: var(--s-warn); }
+.dot.s-bad { background: var(--s-bad); }
+.an-push { margin-left: auto; }
+.an-levers { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.an-lever { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.an-lever-head { display: flex; gap: 8px 12px; align-items: baseline; flex-wrap: wrap; }
+.an-lever h3, .an-f h3 { font-size: 14px; margin: 0; font-weight: 600; }
+.an-lever-num { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.an-lever-num span { color: var(--text-secondary); font-size: 12px; }
+.an-lever p { margin: 8px 0 0; font-size: 14px; }
+.an-lever .sub { color: var(--text-muted); font-size: 12px; }
+.an-findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.an-f { border-left: 3px solid var(--border); padding: 2px 0 2px 12px; }
+.an-f.lv-good { border-left-color: var(--s-good); }
+.an-f.lv-watch { border-left-color: var(--s-warn); }
+.an-f.lv-bad { border-left-color: var(--s-bad); }
+.an-f-head { display: flex; gap: 6px 10px; align-items: center; flex-wrap: wrap; }
+.an-f-head .badge { font-size: 12px; }
+.an-f p { margin: 6px 0 0; max-width: 980px; line-height: 1.5; }
+.an-ev { margin-top: 6px; font-size: 13px; }
+.an-ev summary { cursor: pointer; color: var(--text-secondary); }
+.an-ev-t { border-collapse: collapse; margin-top: 4px; }
+.an-ev-t th, .an-ev-t td { text-align: left; padding: 3px 12px 3px 0; border-bottom: 1px solid var(--border); font-weight: 400; vertical-align: top; }
+.an-ev-t th { color: var(--text-secondary); }
+.an-ev-t .v { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.an-ev-t .p { color: var(--text-muted); }
+@media (max-width: 600px) {
+  .an-levers { grid-template-columns: 1fr; }
+  .an-lever-num { margin-left: 0; align-items: flex-start; }
+  .an-ev-t .p { display: none; }
+}
+.an-sec { scroll-margin-top: 72px; }

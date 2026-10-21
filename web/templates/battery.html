@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Батерия{% endblock %}
+{% block content %}
+<h1>Батерия</h1>
+<p class="lead">Батерия: {{ batt_desc }}. Циклите са за целия пакет: целият разряд / капацитета към края на периода. Минимумът на заряда следва настройката, валидна за всеки ден. Температурата е от инвертора; Deye пази тази история ~90 дни назад.</p>
+
+<div class="card">
+  <div class="card-head"><h2>Батерията сега</h2><span class="stamp" id="batt-stamp"></span></div>
+  <p class="subtitle">Нивото е SOC от последния кадър; стрелките показват заряд или разряд; обновява се всяка минута</p>
+  <div class="live-batt">
+    <div class="cell idle" id="cell" role="img" aria-label="Заряд на батерията">
+      <div class="cap"></div>
+      <div class="body"><div class="liquid" id="liquid"><div class="wave"></div><div class="wave b"></div>
+        <span class="bubble" style="left:22%"></span><span class="bubble" style="left:48%;animation-delay:-1.1s"></span><span class="bubble" style="left:72%;animation-delay:-2.2s"></span></div>
+        <div class="pct" id="soc-now">–</div></div>
+    </div>
+    <div class="batt-info">
+      <div class="kw"><svg class="chev idle" id="chev" viewBox="0 0 28 44" aria-hidden="true"><path d="M4 16 14 6l10 10"/><path d="M4 27 14 17l10 10"/><path d="M4 38 14 28l10 10"/></svg>
+        <div><b id="batt-kw">–</b> <span class="unit">kW</span><div class="note" id="batt-dir"></div></div></div>
+      <div class="note" id="batt-eta"></div>
+      <div>
+        <div class="row" style="display:flex;justify-content:space-between"><span class="note">Температура</span><b id="batt-temp">–</b></div>
+        <div class="tempbar"><span class="mk" id="temp-mk"></span></div>
+        <div class="scale"><span>0 °C</span><span>15–25 °C идеално</span><span>50 °C</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="card">
+  <div class="card-head"><h2>SOC по дни и часове</h2><span class="code">B01 B06 B07</span></div>
+  <p class="subtitle">средно ниво на заряд за всеки час, %; по-тъмно = по-пълна батерия</p>
+  <div class="chart tall" id="c-heat"></div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Заряд и разряд</h2><span class="code">E06 B03</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle" id="cd-sub">kWh</p>
+    <div class="chart" id="c-cd"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Еквивалентни пълни цикли, натрупано</h2><span class="code">B02</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">от пускането, Σ разряд / капацитета на целия пакет към края на периода</p>
+    <div class="chart" id="c-cycles"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Часове на 100% и на минимума</h2><span class="code">B06 B07</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle" id="hours-sub">часа на ден</p>
+    <div class="chart" id="c-hours"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Час на пълна батерия</h2><span class="code">U05</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">първият момент със SOC ≥ 99% (медиана при месеци); празно = не е стигнала 100%</p>
+    <div class="chart" id="c-full"></div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Температура на батерията</h2><span class="code">B05</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle">°C, дневен максимум и средна</p>
+  <div class="chart short" id="c-temp"></div>
+</div>
+{% endblock %}
+{% block script %}
+const BATT_CHANGES = {{ batt_changes|tojson }};
+// Live battery: liquid level = SOC, arrows up while charging, down while discharging (battery_kw > 0 is discharge).
+async function renderLive() {
+  const [n, meta] = await Promise.all([PV.api("now"), PV.api("meta")]);
+  if (!n.ts) return;
+  const pack = meta.batteries.find((b) => !b.valid_to) || meta.batteries[meta.batteries.length - 1];
+  const cap = pack ? pack.modules * pack.kwh_per_module : null, minSoc = pack ? pack.soc_min_normal : 30;
+  const kw = n.battery_kw ?? 0, soc = n.soc ?? 0, idle = Math.abs(kw) < 0.05;
+  document.getElementById("liquid").style.height = `${Math.max(0, Math.min(100, soc))}%`;
+  document.getElementById("cell").classList.toggle("idle", idle);
+  document.getElementById("cell").setAttribute("aria-label", `Заряд ${PV.num(soc, 0)}%`);
+  PV.countUp(document.getElementById("soc-now"), `${PV.num(soc, 0)}%`, 1600);
+  PV.countUp(document.getElementById("batt-kw"), PV.num(Math.abs(kw), 2), 1200);
+  const chev = document.getElementById("chev");
+  chev.classList.toggle("idle", idle); chev.classList.toggle("down", !idle && kw > 0);
+  document.getElementById("batt-dir").textContent = idle ? "в покой" : kw > 0 ? "разрежда към дома" : "зарежда";
+  const h = idle || !cap ? null : kw < 0 ? (100 - soc) / 100 * cap / -kw : (soc - minSoc) / 100 * cap / kw;
+  document.getElementById("batt-eta").textContent = h === null || h < 0 ? "" :
+    `${kw < 0 ? "До пълна" : `До ${PV.num(minSoc, 0)}%`} при тази мощност: ~${h < 1 ? `${PV.num(h * 60, 0)} мин` : `${PV.num(h, 1)} ч`}`;
+  const temp = n.battery_temp && n.battery_temp.value;
+  document.getElementById("batt-temp").textContent = temp == null ? "–" : `${PV.num(temp, 0)} °C`;
+  requestAnimationFrame(() => { document.getElementById("temp-mk").style.left = `${Math.max(0, Math.min(100, (temp ?? 0) / 50 * 100))}%`; });
+  document.getElementById("batt-stamp").textContent = `преди ${PV.num(n.age_min, 0)} мин`;
+}
+
+async function render(state) {
+  const [k, all, s, heat, life] = await Promise.all([
+    PV.api("kpi", PV.range()), PV.api("kpi", { from: PV.first(), to: state.to }),
+    PV.api("series", PV.range()), PV.api("soc-heatmap", PV.range()),
+    PV.api("series", { from: PV.first(), to: state.to, group: "day" }),
+  ]);
+  const K = k.kpis, T = k.totals;
+  const ratio = T.chg ? T.dis / T.chg * 100 : null;
+  // the lowest SOC is an observation (date and the setting valid then), the minimum is a dated setting
+  const lowSub = T.soc_min_day ? [`най-нисък на ${PV.fmtDate(T.soc_min_day)}`,
+    T.soc_min_setting_then != null && T.soc_min != null && T.soc_min < T.soc_min_setting_then ? `под минимума в настройките тогава (${PV.num(T.soc_min_setting_then, 0)}%)` : null]
+    .filter(Boolean).join("; ") : "";
+  const mins = (T.soc_min_settings || []).map((v) => `${PV.num(v, 0)}%`);
+  const minLabel = mins.length ? `SOC ≤ ${mins.join(" / ")} по настройките за периода` : "";
+  PV.tiles("tiles", [
+    { code: "B01", label: "Заряд мин. / макс. (SOC)", value: `${PV.num(K.B01min.value, 0)} / ${PV.num(K.B01max.value, 0)}`, unit: "%", sub: lowSub },
+    { code: "B02", label: "Пълни цикли за периода", value: PV.num(K.B02.value, 1), sub: `от пускането ${PV.num(all.kpis.B02.value, 0)}` },
+    { code: "B03", label: "Отдадено / заредено", value: `${PV.num(T.dis, 0)} / ${PV.num(T.chg, 0)}`, unit: "kWh", sub: `от пускането ${PV.num(all.totals.dis / 1000, 2)} MWh разряд` },
+    { code: "B04", label: "Ефективност на батерията", value: PV.num(ratio, 1), unit: "%", sub: "горна граница на ефективността, без корекция за SOC" },
+    { code: "B06", label: "Време на пълна батерия", value: PV.num(K.B06.value, 1), unit: "ч/ден" },
+    { code: "B07", label: "Време на минимума", value: PV.num(K.B07.value, 1), unit: "ч/ден", sub: minLabel },
+    { code: "U05", label: "Батерията се пълни около", value: PV.hhmm(K.U05.value), sub: `пълна в ${T.full_days} от ${k.days} дни` },
+    { code: "U03", label: "Нощта от батерията", value: PV.num(K.U03.value, 0), unit: "%", sub: "нощен товар от батерията" },
+    { code: "B05", label: "Макс. температура на батерията", value: PV.num(K.B05.value, 0), unit: "°C", sub: `${PV.num(K.B05h.value, 0)} °C·ч над 35 °C` },
+  ]);
+
+  // SOC heatmap, sequential blue ramp
+  const days = heat.days;
+  PV.chart("c-heat", (t) => PV.base(t, {
+    grid: { left: 8, right: 20, top: 8, bottom: 56, containLabel: true },
+    tooltip: { confine: true, backgroundColor: t.surface, borderColor: t.border, textStyle: { color: t.text1 },
+      formatter: (p) => `<b>${p.value[2]}%</b> <span style="color:${t.text2}">${PV.esc(PV.fmtDate(days[p.value[0]]))}, ${p.value[1]}:00–${p.value[1] + 1}:00</span>` },
+    xAxis: PV.catAxis(t, days, { splitArea: { show: false } }),
+    yAxis: { type: "category", data: [...Array(24).keys()].map((h) => `${h}:00`), inverse: true,
+      axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: t.muted, interval: 2 } },
+    visualMap: { min: 0, max: 100, calculable: false, orient: "horizontal", left: "center", bottom: 0, itemWidth: 12, itemHeight: 200,
+      text: ["100%", "0%"], textStyle: { color: t.muted }, inRange: { color: t.seq } },
+    series: [{ name: "SOC", type: "heatmap", data: heat.cells, itemStyle: { borderColor: t.surface, borderWidth: days.length > 120 ? 0 : 1 },
+      emphasis: { itemStyle: { borderColor: t.text1, borderWidth: 1 } } }],
+  }));
+
+  const rows = s.rows, x = rows.map((r) => r.label);
+  const unit = s.group === "month" ? "по месеци" : "по дни";
+  document.getElementById("cd-sub").textContent = `kWh ${unit}`;
+  PV.chart("c-cd", (t) => PV.base(t, {
+    legend: PV.barLegend(t), tooltip: PV.tooltip(t, () => "kWh", 1),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "kWh"),
+    series: [PV.bar("Заряд", rows.map((r) => r.chg), t.battery), PV.bar("Разряд", rows.map((r) => r.dis), t.load)],
+  }));
+  let c = 0;
+  const pack = all.totals.batt_kwh;   // whole pack, as the B02 tile
+  const cum = life.rows.map((r) => [r.label, (c += pack ? r.dis / pack : r.cycles)]);
+  PV.chart("c-cycles", (t) => PV.base(t, {
+    tooltip: PV.tooltip(t, () => "цикъла", 1), grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+    xAxis: PV.catAxis(t, cum.map((p) => p[0])), yAxis: PV.valueAxis(t, "цикли"),
+    series: [PV.line("Цикли", cum.map((p) => Math.round(p[1] * 10) / 10), t.battery, BATT_CHANGES.length ? {
+      markLine: { silent: true, symbol: "none", lineStyle: { color: t.muted, width: 1, type: "solid" },
+        label: { color: t.muted, formatter: (p) => `разширение ${p.data.name}` },
+        data: BATT_CHANGES.map((c) => ({ name: c.label, xAxis: c.day })) } } : {})],
+  }));
+  document.getElementById("hours-sub").textContent = s.group === "month" ? "средно часа на ден за месеца" : "часа на ден";
+  const perDay = (r, f) => r.h_soc ? Math.round(r[f] / r.h_soc * 24 * 10) / 10 : null;   // per day with SOC data
+  PV.chart("c-hours", (t) => PV.base(t, {
+    legend: PV.barLegend(t), tooltip: PV.tooltip(t, () => "ч", 1),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "ч", { max: 24 }),
+    series: [PV.bar("На 100%", rows.map((r) => perDay(r, "h_full")), t.load), PV.bar("На минимума", rows.map((r) => perDay(r, "h_low")), t.export)],
+  }));
+  PV.chart("c-full", (t) => PV.base(t, {
+    tooltip: Object.assign(PV.tooltip(t), { formatter: (ps) => ps.map((p) => `${PV.esc(PV.label(p.axisValue))}: <b>${PV.hhmm(p.value / 60)}</b>`).join("") }),
+    grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "час", { min: 360, max: 1200, interval: 120, axisLabel: { color: t.muted, formatter: (v) => PV.hhmm(v / 60) } }),
+    series: [PV.line("Пълна в", rows.map((r) => r.t_full), t.battery, { showSymbol: true, symbolSize: 6, itemStyle: { color: t.battery, borderColor: t.surface, borderWidth: 2 } })],
+  }));
+  const hasT = rows.some((r) => r.temp_batt_max !== null);
+  PV.empty("c-temp", hasT ? null : "Няма температури за периода (Deye пази инверторната история ~90 дни).");
+  if (hasT) PV.chart("c-temp", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: PV.tooltip(t, () => "°C", 1),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "°C", { scale: true }),
+    series: [PV.line("Максимум", rows.map((r) => r.temp_batt_max), t.temp),
+             PV.line("Средна", rows.map((r) => r.temp_batt_avg), t.temp, { lineStyle: { width: 2, color: t.temp, type: [6, 4] } })],
+  }));
+}
+document.addEventListener("DOMContentLoaded", () => {
+  renderLive();
+  setInterval(renderLive, 60000);
+  PV.initFilters(async (s) => { PV.setLoading(true); try { await render(s); } finally { PV.setLoading(false); } });
+});
+{% endblock %}

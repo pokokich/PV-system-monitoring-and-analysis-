@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Потребление и мрежа{% endblock %}
+{% block content %}
+<h1>Потребление и мрежа</h1>
+<p class="lead">Откъде идва енергията за дома, колко се купува от мрежата по дневна и нощна тарифа и колко от произведеното се ползва. Стойностите са по измерването на Deye. До март 2026 електромерът отчита около 250–360 kWh на месец повече внос, отколкото вижда Deye (виж Икономика); тук те не са включени.</p>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="card">
+  <div class="card-head"><h2>Откъде идва консумацията</h2><span class="code">E07 E06 E03</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle" id="mix-sub">kWh: директно от PV, от батерията и от мрежата</p>
+  <div class="chart" id="c-mix"></div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Внос по тарифи</h2><span class="code">E04</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">kWh; нощ 23:00–07:00 (април–октомври), 22:00–06:00 (ноември–март)</p>
+    <div class="chart" id="c-tariff"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Самозадоволяване и самопотребление</h2><span class="code">U02 U01</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">%; самозадоволяване = дял от консумацията без мрежата, самопотребление = дял от PV, който не отива в мрежата</p>
+    <div class="chart" id="c-ratio"></div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Типичен ден за периода</h2><span class="code">E01 E02 E03 E06</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle">средно kWh за всеки час (= средна мощност в kW)</p>
+  <div class="chart" id="c-profile"></div>
+</div>
+{% endblock %}
+{% block script %}
+async function render(state) {
+  const [k, s, prof] = await Promise.all([PV.api("kpi", PV.range()), PV.api("series", PV.range()), PV.api("profile", PV.range())]);
+  const K = k.kpis, T = k.totals;
+  PV.tiles("tiles", [
+    { code: "E02", label: "Консумация на дома", value: PV.num(T.load, 0), unit: "kWh", sub: `${PV.num(T.load / Math.max(T.day_frac, 1), 1)} kWh на ден` },
+    { code: "E03", label: "Внос от мрежата", value: PV.num(T.imp, 0), unit: "kWh", sub: `пик ${PV.num((T.import_peak_w || 0) / 1000, 1)} kW` },
+    { code: "E04", label: "Внос дневна / нощна тарифа", value: `${PV.num(T.imp_day, 0)} / ${PV.num(T.imp_night, 0)}`, unit: "kWh" },
+    { code: "E05", label: "Износ към мрежата", value: PV.num(T.exp, 1), unit: "kWh", sub: "режим нулев износ" },
+    { code: "E07", label: "Ползвано направо от панелите", value: PV.num(T.pv_direct, 0), unit: "kWh" },
+    { code: "U02", label: "Самозадоволяване (без мрежа)", value: PV.num(K.U02.value, 1), unit: "%" },
+    { code: "U01", label: "Самопотребление (ползвано у дома)", value: PV.num(K.U01.value, 1), unit: "%" },
+    { code: "U03", label: "Нощно покритие от батерията", value: PV.num(K.U03.value, 0), unit: "%" },
+    { label: "Заряд на батерията от мрежата", value: PV.num(T.chg_grid, 1), unit: "kWh", sub: "заряд над PV в същите 5 минути" },
+  ]);
+  const rows = s.rows, x = rows.map((r) => r.label);
+  document.getElementById("mix-sub").textContent = `kWh ${s.group === "month" ? "по месеци" : "по дни"}: директно от PV, от батерията и от мрежата`;
+  PV.chart("c-mix", (t) => PV.base(t, {
+    legend: PV.barLegend(t), tooltip: PV.tooltip(t, () => "kWh", 1),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "kWh"),
+    series: [
+      PV.stackBar(t, "Директно от PV", rows.map((r) => r.pv_direct), t.pv),
+      PV.stackBar(t, "От батерията", rows.map((r) => r.dis), t.battery),
+      PV.stackBar(t, "От мрежата", rows.map((r) => r.imp), t.gridImp),
+    ],
+  }));
+  PV.chart("c-tariff", (t) => PV.base(t, {
+    legend: PV.barLegend(t), tooltip: PV.tooltip(t, () => "kWh", 1),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "kWh"),
+    series: [PV.stackBar(t, "Дневна тарифа", rows.map((r) => r.imp_day), t.day),
+             PV.stackBar(t, "Нощна тарифа", rows.map((r) => r.imp_night), t.night)],
+  }));
+  PV.chart("c-ratio", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: PV.tooltip(t, () => "%", 1),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "%", { min: 0, max: 100 }),
+    series: [PV.line("Самозадоволяване", rows.map((r) => r.self_sufficiency), t.load),
+             PV.line("Самопотребление", rows.map((r) => r.self_consumption), t.pv)],
+  }));
+  const P = prof.rows, hx = P.map((r) => `${r.hour}:00`);
+  PV.chart("c-profile", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: PV.tooltip(t, () => "kWh", 2),
+    xAxis: PV.catAxis(t, hx, { boundaryGap: false }), yAxis: PV.valueAxis(t, "kWh/ч"),
+    series: [PV.line("PV", P.map((r) => r.pv), t.pv, { areaStyle: { color: t.pv, opacity: 0.1 } }),
+             PV.line("Консумация", P.map((r) => r.load), t.load),
+             PV.line("Внос", P.map((r) => r.imp), t.gridImp, { lineStyle: { width: 2, color: t.gridImp, type: [6, 4] } }),
+             PV.line("Разряд на батерията", P.map((r) => r.dis), t.battery)],
+  }));
+}
+document.addEventListener("DOMContentLoaded", () => {
+  PV.initFilters(async (s) => { PV.setLoading(true); try { await render(s); } finally { PV.setLoading(false); } });
+});
+{% endblock %}

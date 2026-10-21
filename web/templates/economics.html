@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Икономика{% endblock %}
+{% block content %}
+<h1>Икономика и окупаемост</h1>
+<p class="lead">Сметка без PV минус реалната сметка за ток, по въведените тарифи (дневна и нощна зона или една цена), с ДДС. Всички суми са в {{ ccy_code }}.</p>
+
+<h2 class="section">От пускането</h2>
+<div class="hero">
+  <div class="label">Натрупана нетна полза от пускането (F02)</div>
+  <div class="value" id="hero-value">–</div>
+  <div class="sub" id="hero-sub"></div>
+  <div class="meter"><span id="hero-meter" style="width:0"></span></div>
+</div>
+
+<div class="tiles" id="tiles-ltd"></div>
+<h2 class="section">За избрания период</h2>
+<div class="tiles" id="tiles"></div>
+
+<div class="card">
+  <div class="card-head"><h2>Окупаемост</h2><span class="code">F02 F04 F05</span><button type="button" data-table>Таблица</button></div>
+  <p class="subtitle">{{ ccy }}, натрупана нетна полза и прогноза по трите сценария (прекъснати линии) спрямо вложения CAPEX; сценариите се сменят на страница <a href="/goals">Цели</a></p>
+  <div class="chart tall" id="c-payback"></div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-head"><h2>Спестено по тарифи</h2><span class="code">F01</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle" id="save-sub">{{ ccy }}</p>
+    <div class="chart" id="c-save"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Сметки за ток по фактури</h2><span class="code">G01 F11</span><button type="button" data-table>Таблица</button></div>
+    <p class="subtitle">{{ ccy }} с ДДС за всеки отчетен период по въведените фактури; чертата отбелязва пускането на системата</p>
+    <div class="chart" id="c-invoices"></div>
+  </div>
+</div>
+<div class="note box" id="method"></div>
+{% endblock %}
+{% block script %}
+const MONTH_NAMES = ["януари", "февруари", "март", "април", "май", "юни", "юли", "август", "септември", "октомври", "ноември", "декември"];
+let staticDone = false;
+
+async function renderStatic() {
+  const [pb, inv] = await Promise.all([PV.api("payback"), PV.api("invoices")]);
+  const S = pb.summary, SC = pb.scenarios, B = SC.find((x) => x.name === "base") || {};
+  const f10 = (await PV.api("kpi", { from: PV.first(), to: PV.last() })).kpis.F10.value;
+  PV.countUp(document.getElementById("hero-value"), `${PV.num(S.cumulative, 0)} {{ ccy }}`, 1400);
+  document.getElementById("hero-sub").textContent = `${PV.num(S.roi, 1)}% от CAPEX ${PV.num(S.capex_total, 2)} {{ ccy }}`;
+  document.getElementById("hero-meter").style.width = `${Math.min(100, Math.max(0, S.roi || 0))}%`;
+  PV.tiles("tiles-ltd", [
+    { code: "CAPEX", label: "Вложено в системата", value: PV.num(S.capex_total, 2), unit: "{{ ccy }}", sub: pb.capex.map((c) => `${PV.fmtDate(c.date)}`).join(" + ") },
+    { code: "F03", label: "Изплатена част от инвестицията", value: PV.num(S.roi, 1), unit: "%" },
+    { code: "F04", label: "Прогнозна окупаемост", value: PV.num(B.years, 1), unit: "години", conditional: true,
+      sub: `от пускането, базов сценарий; ${PV.num(B.annual, 0)} {{ ccy }} годишно сега${Math.abs((B.annual || 0) - (S.annual || 0)) > 1 ? ` (${PV.num(S.annual, 0)} {{ ccy }} без корекция за разширението)` : ""}` },
+    { code: "F05", label: "Прогнозна дата на изплащане", value: PV.fmtDate(B.date), conditional: true,
+      sub: SC.filter((x) => x.name !== "base").map((x) => `${x.label.toLowerCase()}: ${PV.fmtDate(x.date)}`).join(" · ") },
+    { code: "F11", label: "Сметка преди / след PV", value: `${PV.num(inv.before_avg_ccy, 0)} / ${PV.num(inv.after_avg_ccy, 0)}`, unit: "{{ ccy }}/мес",
+      sub: `${PV.num(inv.before_avg_kwh, 0)} / ${PV.num(inv.after_avg_kwh, 0)} kWh от мрежата на месец (по фактури)` },
+    { code: "F10", label: "Нетна полза спрямо бизнес плана", value: PV.num(f10, 0), unit: "%", sub: "нетна полза от пускането / план (страница Цели)" },
+  ]);
+
+  const day = (d) => Date.parse(d + "T00:00:00Z");
+  const actual = pb.actual.map(([d, v]) => [day(d), v]);
+  const fcs = SC.map((x) => ({ name: x.name, label: x.label, data: x.forecast.map(([d, v]) => [day(d), v]) }));
+  const fc = (fcs.find((x) => x.name === "base") || { data: [] }).data;
+  const capex = [];
+  pb.capex.forEach((c, i) => {
+    const prev = i ? pb.capex[i - 1].total : 0;
+    capex.push([day(c.date), prev], [day(c.date), c.total]);
+  });
+  const end = Math.max(actual[actual.length - 1][0], ...fcs.map((x) => (x.data.length ? x.data[x.data.length - 1][0] : 0)));
+  capex.push([end, pb.capex.length ? pb.capex[pb.capex.length - 1].total : 0]);
+  if (capex.length && actual.length) capex.unshift([actual[0][0], 0]);
+  PV.chart("c-payback", (t) => PV.base(t, {
+    legend: PV.legend(t), tooltip: Object.assign(PV.tooltip(t, () => "{{ ccy }}", 0), {
+      formatter: (ps) => {
+        const head = new Date(ps[0].value[0]).toLocaleDateString(PV.locale, { timeZone: "UTC" });
+        return `<div style="color:${t.text2}">${head}</div>` + ps.map((p) =>
+          `<div><span style="display:inline-block;width:12px;height:2px;background:${p.color};margin-right:8px;vertical-align:middle"></span><b>${PV.num(p.value[1], 0)} {{ ccy }}</b> <span style="color:${t.text2}">${PV.esc(p.seriesName)}</span></div>`).join("");
+      } }),
+    xAxis: PV.timeAxis(t), yAxis: PV.valueAxis(t, "{{ ccy }}", { min: 0 }),
+    series: [
+      PV.line("Нетна полза", actual, t.money),
+      ...fcs.map((x) => PV.line(`Прогноза: ${x.label.toLowerCase()}`, x.data, t.money,
+        { lineStyle: { width: x.name === "base" ? 2 : 1, color: t.money, type: x.name === "base" ? [6, 4] : [2, 3] } })),
+      PV.line("CAPEX", capex, t.muted, { step: false, lineStyle: { width: 1, color: t.muted } }),
+    ],
+  }));
+
+  const rows = inv.rows, x = rows.map((r) => r.period_to.slice(0, 7));
+  const pvIdx = rows.findIndex((r) => r.with_pv);
+  PV.chart("c-invoices", (t) => PV.base(t, {
+    tooltip: PV.tooltip(t, () => "{{ ccy }}", 2), grid: { left: 8, right: 20, top: 24, bottom: 8, containLabel: true },
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "{{ ccy }}"),
+    series: [PV.bar("Сметка", rows.map((r) => r.total_ccy), t.gridImp, {
+      markLine: pvIdx >= 0 ? { silent: true, symbol: "none", lineStyle: { color: t.muted, width: 1, type: "solid" },
+        label: { color: t.muted, formatter: "PV" }, data: [{ xAxis: pvIdx - 0.5 }] } : undefined })],
+  }));
+
+  const prof = pb.profile, est = new Set(S.estimated_months || []);
+  document.getElementById("method").innerHTML = `
+    <b>Как се смята.</b> За всеки час: сметка без PV = консумация × цена на тарифната зона; реална сметка = внос × същата цена;
+    цените са от тарифите в Настройки (с всички такси), плюс ДДС, ако са въведени без него. Нетната полза е разликата, плюс приход от износ (по изкупната цена, ако има) минус разходите за поддръжка.
+    <br><br><b>Електромер.</b> За периодите с фактура вносът е по електромера. Ако той показва повече внос от Deye,
+    разликата се води консумация извън измерването на Deye и се добавя и към сметката без PV, и към реалната сметка:
+    полза не се губи и не се добавя, а реалната сметка съвпада с фактурите.
+    <br><br><b>Прогноза (условна).</b> Средна нетна полза на ден за всеки календарен месец от последните 12 месеца:
+    ${Object.entries(prof).map(([m, v]) => `${MONTH_NAMES[m - 1]} ${PV.num(v, 2)} {{ ccy }}${est.has(+m) ? " (оценка от съседните месеци)" : ""}`).map(PV.esc).join(", ")}.
+    Това е профилът без корекция (${PV.num(S.annual, 0)} {{ ccy }} годишно). <b>Сценариите</b> вместо него ползват профила, в който дните преди разширение
+    са приведени към сегашната система (добавените панели и модули, оценка): ${PV.num(B.annual, 0)} {{ ccy }} годишно, плюс поскъпване на тока и деградация
+    по сценарий (${SC.map((x) => `${x.label.toLowerCase()} ${PV.num(x.price_escalation_pct ?? 0, 0)}% / ${PV.num(x.degradation_pct ?? 0, 1)}%`).join(", ")}; виж страница Цели).`;
+}
+
+async function render(state) {
+  if (!staticDone) { staticDone = true; await renderStatic(); }
+  const [k, s] = await Promise.all([PV.api("kpi", PV.range()), PV.api("series", PV.range())]);
+  const K = k.kpis, T = k.totals;
+  PV.tiles("tiles", [
+    { code: "F01", label: "Нетна полза за периода", value: PV.num(K.F01.value, 2), unit: "{{ ccy }}", sub: `${PV.num(T.benefit / Math.max(T.day_frac, 1), 2)} {{ ccy }} на ден` },
+    { code: "G02", label: "Сметка, ако нямаше PV", value: PV.num(K.G02.value, 2), unit: "{{ ccy }}" },
+    { code: "G01", label: "Реална сметка за ток", value: PV.num(K.G01.value, 2), unit: "{{ ccy }}", sub: T.metered_days ? `${T.metered_days} дни по електромера` : "по Deye (още няма фактура)" },
+    { code: "G03", label: "Приход от продаден ток", value: PV.num(K.G03.value, 2), unit: "{{ ccy }}", sub: T.exp > 0 ? `${PV.num(T.exp, 0)} kWh износ` : "няма износ" },
+    { label: "Спестено, дневна / нощна тарифа", value: `${PV.num(T.save_day, 0)} / ${PV.num(T.save_night, 0)}`, unit: "{{ ccy }}" },
+  ]);
+  const rows = s.rows, x = rows.map((r) => r.label);
+  document.getElementById("save-sub").textContent = `{{ ccy }} ${s.group === "month" ? "по месеци" : "по дни"}, с ДДС`;
+  PV.chart("c-save", (t) => PV.base(t, {
+    legend: PV.barLegend(t), tooltip: PV.tooltip(t, () => "{{ ccy }}", 2),
+    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "{{ ccy }}"),
+    series: [PV.stackBar(t, "Дневна тарифа", rows.map((r) => r.save_day), t.day),
+             PV.stackBar(t, "Нощна тарифа", rows.map((r) => r.save_night), t.night)],
+  }));
+}
+document.addEventListener("DOMContentLoaded", () => {
+  PV.initFilters(async (s) => { PV.setLoading(true); try { await render(s); } finally { PV.setLoading(false); } });
+});
+{% endblock %}
