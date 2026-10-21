@@ -17,4 +17,4 @@ exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="PV Monitor", console=
 coll = COLLECT(exe, a.binaries, a.datas, name="PV Monitor")
 if sys.platform == "darwin":
     app = BUNDLE(coll, name="PV Monitor.app", icon=str(ROOT / "desktop" / "icon.icns"), bundle_identifier="com.pvmonitor.app",
-                 info_plist={"LSUIElement": True, "CFBundleShortVersionString": "0.1.2"})
+                 info_plist={"LSUIElement": True, "CFBundleShortVersionString": "0.1.3"})
