@@ -55,7 +55,7 @@ monitoring permissions** (station and device data, no control) → copy App ID a
    Windows: extract to `%LOCALAPPDATA%\Programs\PV Monitor` and run `PV Monitor.exe`.
 3. If no release exists yet or the binary does not start, run from source instead: install Python 3.11+, clone the
    repository, `pip install -r requirements-desktop.txt`, then `python -m desktop.app`.
-4. Confirm `http://127.0.0.1:8088/healthz` answers. In the tray menu enable **Start at login** (or tell the owner to).
+4. Confirm `http://127.0.0.1:<port>/healthz` answers (8088, or the next free port up to 8099 when 8088 is taken; the port is the first word of `instance` in the data folder). In the tray menu enable **Start at login** (or tell the owner to).
 
 ### Step 2B: Docker
 

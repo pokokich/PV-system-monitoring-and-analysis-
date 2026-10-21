@@ -7,6 +7,7 @@ Run: uvicorn web.app:app --host 0.0.0.0 --port 8088
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -446,7 +447,8 @@ def healthz():
         last = conn.execute("SELECT max(ts) FROM station_frame").fetchone()[0]
     finally:
         conn.close()
-    return {"ok": True, "last_frame": last}
+    # the desktop app tells its own instance apart from another service on the same port
+    return {"ok": True, "last_frame": last, **({"instance": os.environ["PVMON_INSTANCE"]} if os.environ.get("PVMON_INSTANCE") else {})}
 
 
 def system_status(conn: sqlite3.Connection) -> dict:

@@ -4,20 +4,26 @@
 
 - data in the user's application folder (macOS ~/Library/Application Support/PV Monitor,
   Windows %APPDATA%\\PV Monitor, Linux ~/.local/share/pv-monitor), override with PVMON_HOME;
-- the dashboard on http://127.0.0.1:8088 (PVMON_PORT), opened in the browser at start; only this
-  computer can reach it unless PVMON_HOST=0.0.0.0 is set;
+- the dashboard on http://127.0.0.1:8088, or the next free port up to 8099 when something else
+  (another dashboard, a Docker container) answers there; PVMON_PORT fixes the port. Opened in the
+  browser at start; only this computer can reach it unless PVMON_HOST=0.0.0.0 is set;
 - an icon in the menu bar / system tray (pystray, optional) with Open, Start at login and Quit;
 - while the computer is off or asleep nothing is collected; on the next start the collector
   fills the gap from Deye's history (5-minute data ~90 days back, daily totals further).
 
-A second start only opens the browser on the running instance.
+A second start only opens the browser on the running instance: it is recognised by the id in
+<data folder>/instance, which its /healthz returns, so another service on the same port is never
+mistaken for it.
 """
 from __future__ import annotations
 
+import json
 import logging
 import logging.handlers
 import os
 import platform
+import secrets
+import socket
 import sys
 import threading
 import time
@@ -40,14 +46,13 @@ def home() -> Path:
     return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "pv-monitor"
 
 
-def configure() -> tuple[str, int, Path]:
+def configure() -> tuple[str, int | None, Path]:
     root = home()
     (root / "data").mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("DB_PATH", str(root / "data" / "pv.sqlite"))
     os.environ.setdefault("BACKUP_PATH", str(root / "backups"))
     host = os.environ.get("PVMON_HOST", "127.0.0.1")
-    port = int(os.environ.get("PVMON_PORT", "8088"))
-    os.environ.setdefault("WEB_HEALTH_URL", f"http://127.0.0.1:{port}/healthz")
+    port = int(os.environ["PVMON_PORT"]) if os.environ.get("PVMON_PORT") else None
     # an optional .env in the app folder, for the same settings as the Docker setup
     from collector.deye_client import load_env
     load_env(root / ".env")
@@ -57,12 +62,36 @@ def configure() -> tuple[str, int, Path]:
     return host, port, root
 
 
-def running(port: int) -> bool:
+def running(port: int, instance: str) -> bool:
+    """True when this app's own instance answers on the port (not just anything)."""
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=3) as resp:
-            return resp.status < 500
+            return resp.status < 500 and json.load(resp).get("instance") == instance
     except Exception:
         return False
+
+
+def in_use(port: int) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def previous(root: Path) -> tuple[int, str] | None:
+    try:
+        port, instance = (root / "instance").read_text().split()
+        return int(port), instance
+    except (OSError, ValueError):
+        return None
+
+
+def free_port(first: int = 8088, last: int = 8099) -> int:
+    for port in range(first, last + 1):
+        if not in_use(port):
+            return port
+    raise SystemExit(f"no free port in {first}-{last}; set PVMON_PORT")
 
 
 def start_web(host: str, port: int) -> threading.Thread:
@@ -184,15 +213,25 @@ def tray(url: str, root: Path, stop: threading.Event) -> bool:
 
 def main() -> None:
     host, port, root = configure()
-    url = f"http://127.0.0.1:{port}/"
-    if running(port):
+    last = previous(root)
+    if last and running(*last):
+        url = f"http://127.0.0.1:{last[0]}/"
         log.info("already running on %s", url)
         webbrowser.open(url)
         return
+    if port is None:
+        port = free_port()
+    elif in_use(port):
+        raise SystemExit(f"port {port} is used by another program; choose another PVMON_PORT")
+    url = f"http://127.0.0.1:{port}/"
+    instance = secrets.token_hex(8)
+    os.environ["PVMON_INSTANCE"] = instance
+    os.environ.setdefault("WEB_HEALTH_URL", f"http://127.0.0.1:{port}/healthz")
+    (root / "instance").write_text(f"{port} {instance}\n")
     stop = threading.Event()
     start_web(host, port)
     for _ in range(50):
-        if running(port):
+        if running(port, instance):
             break
         time.sleep(0.2)
     start_collector(stop)
