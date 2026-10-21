@@ -53,6 +53,13 @@ def configure() -> tuple[str, int | None, Path]:
     os.environ.setdefault("BACKUP_PATH", str(root / "backups"))
     host = os.environ.get("PVMON_HOST", "127.0.0.1")
     port = int(os.environ["PVMON_PORT"]) if os.environ.get("PVMON_PORT") else None
+    # a packaged Python (and python.org's on macOS) has no CA store of its own: HTTPS to Deye,
+    # PVGIS, Open-Meteo and the AI provider failed with CERTIFICATE_VERIFY_FAILED
+    try:
+        import certifi
+        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    except ImportError:
+        pass
     # an optional .env in the app folder, for the same settings as the Docker setup
     from collector.deye_client import load_env
     load_env(root / ".env")

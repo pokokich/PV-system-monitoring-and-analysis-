@@ -277,6 +277,28 @@ class DashboardTests(unittest.TestCase):
             self.client.put("/api/app-settings", json={"llm_provider": None, "llm_base_url": None, "llm_model": None})
             os.environ.pop("SECRETS_PATH")
 
+    def test_setup_reset_forgets_access_and_settings_but_keeps_data(self):
+        import os
+        from collector import secrets
+        os.environ["SECRETS_PATH"] = str(Path(self.tmp.name) / "secrets-reset.json")
+        before = self.client.get("/api/app-settings").json()["settings"]
+        try:
+            secrets.update({"DEYE_EMAIL": "a@b.c", "DEYE_PASSWORD": "p", "DEYE_APP_ID": "1", "DEYE_APP_SECRET": "2",
+                            "LLM_API_KEY": "sk-x"})
+            self.client.put("/api/app-settings", json={"setup_done": True, "currency": "PLN"})
+            self.assertIn('href="/setup"', self.client.get("/settings").text)   # in the side menu
+            self.assertIn("done-card", self.client.get("/setup").text)
+            frames = self.client.get("/healthz").json()["last_frame"]
+            r = self.client.post("/api/setup/reset").json()
+            self.assertFalse(r["deye"]["ready"])
+            self.assertFalse(r["llm"]["has_key"])
+            self.assertIsNone(r["settings"]["setup_done"])
+            self.assertIsNone(r["settings"]["currency"])
+            self.assertEqual(self.client.get("/healthz").json()["last_frame"], frames)
+        finally:
+            os.environ.pop("SECRETS_PATH")
+            self.client.put("/api/app-settings", json={k: v for k, v in before.items() if v not in (None, [])})
+
     def test_setup_page(self):
         r = self.client.get("/setup")
         self.assertEqual(r.status_code, 200)

@@ -320,6 +320,9 @@ class Collector:
             try:
                 if self._secrets_stamp() != stamp:
                     stamp = self._secrets_stamp()
+                    if not secrets.deye_ready():
+                        log.info("Deye access removed (setup reset); waiting for a new one")
+                        return
                     log.info("Deye access changed, signing in again")
                     self.client = DeyeClient(self._config())
                     self.discover()

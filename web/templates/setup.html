@@ -14,11 +14,21 @@
   .win-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
   .win-row label { flex: 0 1 110px !important; }
   .links { display: flex; flex-wrap: wrap; gap: 8px; }
+  .done-card { max-width: 860px; margin-bottom: 16px; border-left: 3px solid var(--s-good); }
+  .done-card .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .done-card a.btn { text-decoration: none; }
 </style>
 
 <h1>Първоначална настройка</h1>
 <p class="lead">Четири стъпки, за да тръгне събирането на данни и дашбордът да смята с твоите цени и система. Всичко може да се промени
   по-късно оттук или от <a href="/settings">Настройки</a>. Програмата само чете от Deye и никога не променя настройки на инвертора.</p>
+
+<section class="card done-card" id="done-card" aria-labelledby="h-done" hidden>
+  <div class="card-head"><h2 id="h-done">Настройката е направена</h2></div>
+  <p class="how">Можеш да промениш всяка стъпка по-долу. Ако искаш да започнеш отначало, „Започни отначало“ изтрива достъпа до Deye, AI ключа и общата информация; събраните данни и записите в Настройки (панели, батерия, цени, инвестиция, фактури, цели) остават.</p>
+  <div class="actions"><a class="btn" href="/settings">Към Настройки</a><button class="btn" type="button" id="reset">Започни отначало</button></div>
+  <p class="form-error" id="reset-error" role="alert"></p>
+</section>
 
 <div class="steps">
   <section class="card" aria-labelledby="h-deye">
@@ -159,6 +169,7 @@ async function load() {
   const st = S.settings;
   // Deye
   const d = S.deye;
+  $("done-card").hidden = !(st.setup_done || d.ready);
   const sp = (x) => `<span>${x}</span>`;
   state($("deye-state"), d.ready, d.pinned ? sp("Достъпът е зададен в .env (сменя се там).") :
     d.ready ? `${sp("Свързано:")} <b>${e(d.email || "")}</b> · ${e(d.region)}. ${sp("Попълни формата само ако искаш да го смениш.")}` : sp("Още няма достъп: попълни данните и натисни „Провери и запази“."));
@@ -258,6 +269,11 @@ $("ai-form").addEventListener("submit", async (ev) => {
 });
 $("ai-key-del").onclick = async () => {
   try { await send("PUT", "secrets/llm", { api_key: null }); await load(); } catch (err) { $("ai-error").textContent = err.message; }
+};
+$("reset").onclick = async () => {
+  if (!confirm(PV.t("Да започна ли настройката отначало? Достъпът до Deye, AI ключът и общата информация ще бъдат изтрити. Данните остават."))) return;
+  $("reset-error").textContent = "";
+  try { await send("POST", "setup/reset"); await load(); window.scrollTo(0, 0); } catch (err) { $("reset-error").textContent = err.message; }
 };
 $("finish").onclick = async () => {
   try { await send("PUT", "app-settings", { setup_done: true }); location.href = "/"; } catch (err) { alert(err.message); }
