@@ -120,29 +120,33 @@ async function refresh(first) {
   let msg;
   if (!L.ready) msg = `${sp(e(L.why || ""))} ${sp("Избери модел в")} <a href="/setup#h-ai">${sp("настройките")}</a>${sp("; дотогава тук има само типичната година.")}`;
   else if (!run) msg = `${sp("Модел:")} <b>${e(L.model || L.provider)}</b>${sp(". Още няма анализ: натисни „Направи нов анализ“ (отнема от няколко секунди до няколко минути).")}`;
-  else if (run.status === "running") msg = `${sp("Анализът тече, започнат")} ${when(run.created_at)} · <b>${e(run.model || "")}</b>…`;
+  else if (run.status === "running") msg = `<span class="an-spin" aria-hidden="true"></span>${sp("Анализът тече, започнат")} ${when(run.created_at)} · <b>${e(run.model || "")}</b>. ${sp("Отнема от няколко секунди до няколко минути; страницата се обновява сама.")}`;
   else if (run.status === "error") msg = `${sp("Последният опит не успя")} (${when(run.finished_at)}): ${sp(e(run.error || ""))}`;
   else msg = `${sp("Анализ от")} ${when(run.finished_at)} · ${sp("данни към")} ${PV.fmtDate(run.as_of)} · ${sp("модел")} <b>${e(run.model || "")}</b>${run.question ? ` · ${sp("въпрос:")} „${e(run.question)}“` : ""}`;
   $("an-state").innerHTML = msg;
   $("an-run").disabled = run?.status === "running";
+  $("an-run").textContent = PV.t(run?.status === "running" ? "Анализът тече…" : "Направи нов анализ");
+  $("an-busy").textContent = run?.status === "running" ? `${Math.max(0, Math.round(Date.now() / 1000 - run.created_at))} s` : "";
   const R = run?.status === "done" ? run.result : run?.previous?.result || null;
   if (run && run.status !== "done" && run.previous) $("an-state").innerHTML += ` ${sp("Показан е предишният анализ от")} ${when(run.previous.finished_at)}.`;
   renderResult(R);
   if (first) renderYear(A);
   clearTimeout(polling);
-  if (run?.status === "running") polling = setTimeout(() => refresh(false), 5000);
+  if (run?.status === "running") polling = setTimeout(() => refresh(false), 3000);
 }
 
 $("an-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   $("an-error").textContent = "";
+  $("an-run").disabled = true;
+  $("an-busy").textContent = PV.t("Пращам данните към модела…");
   try {
     const res = await fetch("/api/analysis/run", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question: $("an-form").question.value || null, language: document.documentElement.lang || null }) });
     const js = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(js.detail || `Грешка ${res.status}`);
     await refresh(false);
-  } catch (err) { $("an-error").textContent = err.message; }
+  } catch (err) { $("an-error").textContent = err.message; $("an-run").disabled = false; $("an-busy").textContent = ""; }
 });
 document.addEventListener("DOMContentLoaded", async () => {
   PV.setLoading(true);

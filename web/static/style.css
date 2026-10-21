@@ -462,6 +462,8 @@ table.goals-list td:nth-child(2), table.goals-list th:nth-child(2), table.goals-
 @keyframes blink { 50% { opacity: .45; } }
 .logo svg { animation: spin 18s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.an-spin { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent, #1f6feb); animation: spin .9s linear infinite; }
 .ring-fg { transition: stroke-dashoffset 1.4s cubic-bezier(.2, .7, .2, 1); }
 
 /* heartbeat line on the health cards: runs in the status color, stands still without data */
