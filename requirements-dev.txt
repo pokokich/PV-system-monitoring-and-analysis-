@@ -1,3 +1,4 @@
 # Tests: python -m unittest
 -r requirements-web.txt
 httpx==0.28.1
+tzdata==2025.2
