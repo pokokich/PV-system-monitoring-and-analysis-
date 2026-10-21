@@ -52,5 +52,20 @@ class InstanceTests(unittest.TestCase):
             self.assertEqual(app.previous(Path(d)), (8089, "abc"))
 
 
+class EnvFileTests(unittest.TestCase):
+    def test_quotes_are_removed_as_docker_does(self):
+        import os
+        from collector.deye_client import load_env
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / ".env"
+            f.write_text('PVMON_T1="claude -p"\nPVMON_T2=a b\nPVMON_T3=\'x\'\n')
+            try:
+                load_env(f)
+                self.assertEqual((os.environ["PVMON_T1"], os.environ["PVMON_T2"], os.environ["PVMON_T3"]), ("claude -p", "a b", "x"))
+            finally:
+                for k in ("PVMON_T1", "PVMON_T2", "PVMON_T3"):
+                    os.environ.pop(k, None)
+
+
 if __name__ == "__main__":
     unittest.main()

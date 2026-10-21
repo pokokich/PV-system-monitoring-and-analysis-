@@ -60,6 +60,11 @@ def configure() -> tuple[str, int | None, Path]:
         os.environ.setdefault("SSL_CERT_FILE", certifi.where())
     except ImportError:
         pass
+    # started from Finder or Explorer the app gets a bare PATH: add the usual places of command-line tools,
+    # so LLM_CLI_COMMAND="claude -p" works as it does in a terminal
+    extra = [str(Path.home() / ".local" / "bin"), "/opt/homebrew/bin", "/usr/local/bin"] if os.name == "posix" else []
+    path = os.environ.get("PATH", "").split(os.pathsep)
+    os.environ["PATH"] = os.pathsep.join(path + [d for d in extra if d not in path and Path(d).is_dir()])
     # an optional .env in the app folder, for the same settings as the Docker setup
     from collector.deye_client import load_env
     load_env(root / ".env")
