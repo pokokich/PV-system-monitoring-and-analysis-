@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}PV система{% endblock %}{% if site_name %} · {{ site_name }}{% endif %}</title>
+  <title>{% block title %}PV Monitor{% endblock %}{% if site_name %} · {{ site_name }}{% endif %}</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/i18n-en.js"></script>
   <script src="/static/i18n.js"></script>
@@ -36,7 +36,7 @@
   <aside class="sidebar" id="sidebar" aria-label="Навигация">
     <a class="brand" href="/">
       <span class="logo" aria-hidden="true"><svg><use href="#i-sun"/></svg></span>
-      <span><b>PV система</b><small>{{ brand_line }}</small></span>
+      <span><b>PV Monitor</b><small>{{ brand_line }}</small></span>
     </a>
     <nav class="pages" aria-label="Страници">
       {% for group, items in nav %}
@@ -54,6 +54,7 @@
       <a class="sys-alert" data-sys href="/quality" hidden><svg aria-hidden="true"><use href="#i-shield"/></svg><span class="sys-text"></span></a>
       <button class="theme-toggle" type="button" id="lang-toggle"><svg aria-hidden="true"><use href="#i-globe"/></svg><span>English</span></button>
       <button class="theme-toggle" type="button" id="theme-toggle"><svg aria-hidden="true"><use href="#i-moon"/></svg><span>Тема</span></button>
+      <a class="source-link" href="https://github.com/pokokich/PV-system-monitoring-and-analysis-" target="_blank" rel="noopener">Изходен код (AGPL-3.0)</a>
     </div>
   </aside>
   <div class="scrim" id="scrim" hidden></div>
@@ -61,7 +62,7 @@
     <header class="topbar">
       <button type="button" class="icon-btn" id="menu-btn" aria-controls="sidebar" aria-expanded="false" aria-label="Меню">
         <svg aria-hidden="true"><use href="#i-menu"/></svg></button>
-      <a class="brand mini" href="/"><span class="logo" aria-hidden="true"><svg><use href="#i-sun"/></svg></span><b>PV система</b></a>
+      <a class="brand mini" href="/"><span class="logo" aria-hidden="true"><svg><use href="#i-sun"/></svg></span><b>PV Monitor</b></a>
       <div class="live" data-live><span class="dot"></span><span class="live-text"></span></div>
     </header>
     <main id="main" tabindex="-1">

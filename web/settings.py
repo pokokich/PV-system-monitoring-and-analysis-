@@ -14,7 +14,7 @@ from . import data
 
 WRITABLE = {"goal", "goal_status", "benchmark", "scenario", "param",
             "pv_array", "battery_config", "tariff", "feed_in_price", "capex_item", "opex_item",
-            "grid_invoice", "grid_invoice_reading", "grid_invoice_line"}
+            "grid_invoice", "grid_invoice_reading", "grid_invoice_line", "app_setting", "ai_analysis"}
 PARAM_PREFIXES = ("goal_", "health_")
 
 _WRITE_ACTIONS = {sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE}

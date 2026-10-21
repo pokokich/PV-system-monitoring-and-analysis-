@@ -76,11 +76,12 @@ const I18N = (() => {
   function node(n) {
     if (n.nodeType === 3) {
       const p = n.parentNode;
-      if (!p || p.nodeName === "SCRIPT" || p.nodeName === "STYLE") return;
+      if (!p || p.nodeName === "SCRIPT" || p.nodeName === "STYLE" || (p.closest && p.closest("[translate=no]"))) return;
       const v = t(n.nodeValue);
       if (v !== n.nodeValue) n.nodeValue = v;
     } else if (n.nodeType === 1) {
-      if (n.nodeName === "SCRIPT" || n.nodeName === "STYLE") return;
+      // translate="no": text that is already in the reader's language (the AI analysis) or is data
+      if (n.nodeName === "SCRIPT" || n.nodeName === "STYLE" || n.closest("[translate=no]")) return;
       for (const a of ATTRS) {
         const v0 = n.getAttribute(a);
         if (v0 && CYR.test(v0)) { const v = t(v0); if (v !== v0) n.setAttribute(a, v); }

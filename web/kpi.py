@@ -132,7 +132,7 @@ def aggregate(rows: list[dict]) -> dict:
     s["b04"] = ratio(s["dis"], s["chg"])
     s["kwp"] = rows[-1]["kwp"] if rows else None
     s["batt_kwh"] = rows[-1]["batt_kwh"] if rows else None
-    # cycles of the whole pack (Dido, PR #16): all discharge / the pack at the end of the period
+    # cycles of the whole pack: all discharge / the pack at the end of the period
     s["pack_cycles"] = s["dis"] / s["batt_kwh"] if s["batt_kwh"] else None
     s["metered_days"] = sum(1 for r in rows if r["metered"])
     s["self_consumption"] = ratio(s["pv"] - s["exp"], s["pv"])

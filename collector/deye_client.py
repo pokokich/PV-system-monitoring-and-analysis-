@@ -76,12 +76,18 @@ class DeyeConfig:
 
     @classmethod
     def from_env(cls) -> "DeyeConfig":
+        """From the environment, else from data/secrets.json (collector/secrets.py)."""
+        from . import secrets
+
+        missing = [k for k in ("DEYE_APP_ID", "DEYE_APP_SECRET", "DEYE_EMAIL", "DEYE_PASSWORD") if not secrets.get(k)]
+        if missing:
+            raise KeyError(", ".join(missing))
         return cls(
-            base_url=os.environ.get("DEYE_BASE_URL", "https://eu1-developer.deyecloud.com/v1.0").rstrip("/"),
-            app_id=os.environ["DEYE_APP_ID"],
-            app_secret=os.environ["DEYE_APP_SECRET"],
-            email=os.environ["DEYE_EMAIL"],
-            password=os.environ["DEYE_PASSWORD"],
+            base_url=(secrets.get("DEYE_BASE_URL") or "https://eu1-developer.deyecloud.com/v1.0").rstrip("/"),
+            app_id=secrets.get("DEYE_APP_ID"),
+            app_secret=secrets.get("DEYE_APP_SECRET"),
+            email=secrets.get("DEYE_EMAIL"),
+            password=secrets.get("DEYE_PASSWORD"),
         )
 
 

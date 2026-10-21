@@ -8,25 +8,40 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from collector import appconf, guard
+from collector import appconf, db, guard
 
-from . import admin, analysis, data, goals, health, kpi, security, settings
+from . import admin, analysis, data, goals, health, kpi, llm, security, settings, setup
 from .data import TZ, day_bounds
 
 HERE = Path(__file__).resolve().parent
-app = FastAPI(title="PV система: дашборд", docs_url="/api/docs", redoc_url=None)
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    """Create or migrate the database: a fresh install has none until the collector signs in, and the
+    setup needs the tables now; after an update the new tables are there before the first request."""
+    try:
+        db.connect(data.DB_PATH).close()
+    except sqlite3.Error:
+        pass   # the collector does it a moment later
+    yield
+
+
+app = FastAPI(title="PV monitoring", docs_url="/api/docs", redoc_url=None, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 app.include_router(admin.router)
 app.include_router(security.router)
+app.include_router(setup.router)
 app.middleware("http")(security.guard_writes)
 
 
@@ -171,7 +186,15 @@ def page(request: Request, name: str, **ctx):
 
 @app.get("/", response_class=HTMLResponse)
 def overview(request: Request):
+    m = data.model()
+    if not m.order and not m.settings.get("setup_done"):
+        return RedirectResponse("/setup", status_code=303)
     return page(request, "overview")
+
+
+@app.get("/setup", response_class=HTMLResponse)
+def setup_page(request: Request):
+    return page(request, "setup")
 
 
 @app.get("/production", response_class=HTMLResponse)
@@ -748,23 +771,41 @@ def api_health(detail: bool = True):
     return out
 
 
-# ---------------------------------------------------------------- analysis
-
-_an_cache: dict = {}
-
+# ---------------------------------------------------------------- analysis (the owner's own LLM)
 
 @app.get("/api/analysis")
 def api_analysis():
-    """Findings and recommendations per component and for the whole system (web/analysis.py)."""
+    """The typical-year chart, the model settings' state and the last AI analysis (web/analysis.py)."""
     m = data.model()
-    goal_rows = read_rows("SELECT * FROM goal ORDER BY id")
-    sc = scenarios()
-    price = curtail_price()
-    key = (m.built_at, price, tuple(tuple(g.items()) for g in goal_rows), tuple(tuple(v.items()) for v in sc.values()))
-    if _an_cache.get("key") != key:
-        conn = data.connect()
-        try:
-            _an_cache.update(key=key, value=rounded(analysis.build(m, conn, sc, goal_rows, price, datetime.now(TZ).timestamp())))
-        finally:
-            conn.close()
-    return _an_cache["value"]
+    conn = data.connect()
+    try:
+        cfg = llm.config(conn)
+        ok, why = llm.ready(cfg)
+        run = analysis.latest(conn)
+    finally:
+        conn.close()
+    return {"as_of": m.order[-1] if m.order else None, **analysis.typical_year(m),
+            "llm": {"ready": ok, "why": why, "provider": cfg["provider"], "model": cfg["model"] or cfg["cli_command"]},
+            "run": run}
+
+
+class AnalysisIn(BaseModel):
+    language: str | None = Field(None, max_length=8)
+    question: str | None = Field(None, max_length=1000)
+
+
+@app.post("/api/analysis/run", status_code=202)
+def run_analysis(x: AnalysisIn):
+    m = data.model()
+    conn = data.connect()
+    try:
+        lang = appconf.get(conn, "analysis_language") or x.language or appconf.get(conn, "language") or "en"
+    finally:
+        conn.close()
+    try:
+        settings.write(analysis.fail_stale)
+        run_id = analysis.start(m, scenarios(), read_rows("SELECT * FROM goal ORDER BY id"), curtail_price(),
+                                lang.lower()[:8], x.question)
+    except llm.LlmError as exc:
+        raise HTTPException(409, str(exc))
+    return {"id": run_id}

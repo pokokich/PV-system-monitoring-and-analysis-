@@ -4,7 +4,7 @@
 //   node scripts/i18n-collect.js [base-url] > missing.json
 const { chromium } = require("playwright");
 const BASE = process.argv[2] || "http://localhost:8088";
-const PAGES = ["/", "/production", "/battery", "/grid", "/economics", "/quality", "/health", "/goals", "/analysis", "/settings"];
+const PAGES = ["/", "/production", "/battery", "/grid", "/economics", "/quality", "/health", "/goals", "/analysis", "/settings", "/setup"];
 const PRESETS = ["today", "7d", "all"];
 
 const harvest = () => {

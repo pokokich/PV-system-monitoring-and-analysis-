@@ -110,6 +110,8 @@ nav.pages a {
 nav.pages a:hover { background: var(--surface-2); color: var(--text-primary); }
 nav.pages a.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 0 4px; }
+.source-link { font-size: 11px; color: var(--text-muted); text-decoration: none; padding: 0 6px; }
+.source-link:hover { color: var(--text-secondary); text-decoration: underline; }
 .live { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
 .live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
 .live.ok .dot { background: var(--s-good); box-shadow: 0 0 0 3px rgba(12, 163, 12, .18); }

@@ -4,95 +4,105 @@
 {% block content %}
 <link rel="stylesheet" href="/static/analysis.css">
 <h1>Анализ на системата</h1>
-<p class="lead" id="an-lead">Изводи по компоненти и за системата като цяло, изчислени от данните в базата. Всеки извод показва числата и периода зад себе си
-  и се обновява с новите данни.</p>
+<p class="lead" id="an-lead">Изводи и препоръки, написани от твоя езиков модел (AI) по обобщение на данните в базата: системата, KPI за
+  30 дни, 365 дни и от пускането, месечни суми, типична година, цели, здраве и окупаемост. Всеки извод показва числата зад себе си.</p>
 
-<h2 class="section" id="summary">Накратко</h2>
-<section class="an-hero card" aria-label="Обща оценка">
-  <div class="an-pillars" id="an-pillars"></div>
-  <ul class="an-headline" id="an-headline"></ul>
+<section class="card" aria-labelledby="h-run">
+  <div class="card-head"><h2 id="h-run">AI анализ</h2><a class="more" href="/setup#h-ai">настройки на модела</a></div>
+  <div id="an-state" class="subtitle"></div>
+  <form class="form" id="an-form" hidden>
+    <label>Въпрос към модела (по избор) <input name="question" maxlength="1000" placeholder="напр. Струва ли си още една батерия?"></label>
+    <div class="actions"><button class="btn primary" type="submit" id="an-run">Направи нов анализ</button><span class="field-hint" id="an-busy"></span></div>
+    <p class="form-error" id="an-error" role="alert"></p>
+  </form>
 </section>
 
-<h2 class="section" id="levers">Какво би променило резултата</h2>
-<section class="card" aria-label="Лостове">
-  <p class="subtitle">Оценки за типична година с текущата система, подредени по годишна полза; окупаемостта е по базовия сценарий.
-    Нищо от това не се прави от дашборда: всички настройки са твои.</p>
-  <div class="an-levers" id="an-levers"></div>
-</section>
+<div id="an-result" hidden>
+  <h2 class="section" id="summary">Накратко</h2>
+  <section class="an-hero card" aria-label="Обща оценка" translate="no">
+    <div class="an-pillars" id="an-pillars"></div>
+    <ul class="an-headline" id="an-headline"></ul>
+  </section>
+
+  <h2 class="section" id="levers">Какво би променило резултата</h2>
+  <section class="card" aria-label="Лостове">
+    <p class="subtitle">Оценки на модела, подредени по годишна полза. Нищо от това не се прави от дашборда: всички настройки са твои.</p>
+    <div class="an-levers" id="an-levers" translate="no"></div>
+  </section>
+
+  <h2 class="section" id="components">По компоненти</h2>
+  <nav class="an-toc" id="an-toc" aria-label="Компоненти" translate="no"></nav>
+  <div id="an-sections" translate="no"></div>
+</div>
 
 <h2 class="section" id="year">Типична година</h2>
 <section class="card" aria-labelledby="h-year">
   <div class="card-head"><h2 id="h-year">Типична година с текущата система</h2><button type="button" data-table>Таблица</button></div>
-  <p class="subtitle" id="year-sub">kWh на месец: използвано и изгубено производство, консумация и внос</p>
+  <p class="subtitle" id="year-sub">kWh на месец: използвано и изгубено производство, консумация и внос (средният ден на всеки месец от последните 365 дни, доизчислен за днешните панели и батерия)</p>
   <div class="chart tall" id="c-year"></div>
 </section>
 
-<h2 class="section" id="components">По компоненти</h2>
-<nav class="an-toc" id="an-toc" aria-label="Компоненти"></nav>
-<div id="an-sections"></div>
-
 <div class="note box" id="an-method">
-  <b>Как се смята.</b> Годишните числа са „типична година с текущата система“: средният ден на всеки месец от последните 365 дни,
-  като дните преди разширението (09.07.2026) са доизчислени с навеса и новите модули, както при прогнозата на целите.
-  Измерените числа са от разширението насам, а тези за стринговете и температурите от 22.07.2026 (по-стари точки Deye не пази).
-  Нивата следват прагове: например панели под 90% от очакваното при свободна батерия, батерия над 40 °C, инвертор над 60 °C.
-  Лостовете са оценки с изписано допускане; зареждането на колата е разпознато като нощни часове с над 3 kWh консумация.
+  <b>Как работи.</b> Дашбордът събира обобщение на числата и го изпраща на модела, който си избрал (Claude, OpenAI-съвместим API,
+  локален Ollama или команда на компютъра). Не се изпращат пароли, ключове, номера на фактури и точният адрес (мястото е закръглено до ~10 km).
+  Моделът може да греши: проверявай изводите по числата под всеки от тях. Без избран модел страницата показва само типичната година.
 </div>
 {% endblock %}
 {% block script %}
 const ICON = { good: "✓", watch: "!", bad: "✕", no_data: "–" };
+const PV_LEVEL = { good: "добро", watch: "за наблюдение", bad: "проблем", no_data: "няма данни" };
 const badge = (lvl, label, cls = "") => `<span class="badge ${cls} s-${lvl}"><span class="ico" aria-hidden="true">${ICON[lvl]}</span>${PV.esc(label)}</span>`;
 const e = PV.esc;
+const $ = (id) => document.getElementById(id);
+const MONTHS = ["яну", "фев", "мар", "апр", "май", "юни", "юли", "авг", "сеп", "окт", "ное", "дек"];
+let polling = null;
 
 function evidence(list) {
   if (!list.length) return "";
-  return `<details class="an-ev"><summary>Числата (${list.length})</summary><table class="an-ev-t"><tbody>${list.map((x) =>
+  return `<details class="an-ev"><summary>${PV.t("Числата")} (${list.length})</summary><table class="an-ev-t"><tbody>${list.map((x) =>
     `<tr><th scope="row">${e(x.label)}</th><td class="v">${e(x.value)}${x.unit ? "&nbsp;" + e(x.unit) : ""}</td><td class="p">${e(x.period || "")}</td></tr>`).join("")}</tbody></table></details>`;
 }
 
 function section(s) {
   return `<section class="card an-sec" id="sec-${e(s.key)}" aria-labelledby="h-${e(s.key)}">
-    <div class="card-head"><h2 id="h-${e(s.key)}">${e(s.title)}</h2><span class="an-push">${badge(s.level, PV_LEVEL[s.level])}</span></div>
+    <div class="card-head"><h2 id="h-${e(s.key)}">${e(s.title)}</h2><span class="an-push">${badge(s.level, PV.t(PV_LEVEL[s.level]))}</span></div>
     <p class="subtitle">${e(s.summary)}</p>
     <ol class="an-findings">${s.findings.map((f) => `<li class="an-f lv-${e(f.level)}">
-      <div class="an-f-head">${badge(f.level, f.level_label)}<h3>${e(f.title)}</h3></div>
+      <div class="an-f-head">${badge(f.level, PV.t(PV_LEVEL[f.level]))}<h3>${e(f.title)}</h3></div>
       <p>${e(f.text)}</p>${evidence(f.evidence)}</li>`).join("")}</ol>
   </section>`;
 }
-const PV_LEVEL = { good: "добро", watch: "за наблюдение", bad: "проблем", no_data: "няма данни" };
 
-async function load() {
-  const A = await PV.api("analysis");
-  if (!A.overall) { document.getElementById("an-sections").innerHTML = `<p class="empty">Няма данни за анализ.</p>`; return; }
-  document.getElementById("an-lead").textContent =
-    `Изводи по компоненти и за системата като цяло, изчислени от данните към ${PV.fmtDate(A.as_of)}. Всеки извод показва числата и периода зад себе си и се обновява с новите данни.`;
-  document.getElementById("an-pillars").innerHTML = A.overall.pillars.map((p) => `<div class="an-pillar lv-${e(p.level)}">
+function when(ts) { return ts ? new Date(ts * 1000).toLocaleString(PV.locale, { dateStyle: "medium", timeStyle: "short" }) : ""; }
+
+function renderResult(R) {
+  $("an-result").hidden = !R;
+  if (!R) return;
+  $("an-pillars").innerHTML = R.overall.pillars.map((p) => `<div class="an-pillar lv-${e(p.level)}">
     <div class="label">${e(p.label)}</div><div class="value">${e(p.value)}</div>
-    <div class="sub">${badge(p.level, p.level_label)} <span>${e(p.sub)}</span></div></div>`).join("");
-  document.getElementById("an-headline").innerHTML = A.overall.headline.map((h) => `<li>${e(h)}</li>`).join("");
-
-  const toc = A.sections.map((s) => [`sec-${s.key}`, s.title, s.level]);
-  document.getElementById("an-toc").innerHTML = toc.map(([id, t, l]) =>
-    `<a href="#${e(id)}">${l ? `<span class="dot s-${e(l)}" aria-hidden="true"></span>` : ""}${e(t)}</a>`).join("");
-
-  const maxEur = Math.max(1, ...A.levers.map((l) => l.eur_year || 0));
-  document.getElementById("an-levers").innerHTML = A.levers.map((l) => `<article class="an-lever">
+    <div class="sub">${badge(p.level, PV.t(PV_LEVEL[p.level]))} <span>${e(p.sub)}</span></div></div>`).join("");
+  $("an-headline").innerHTML = R.overall.headline.map((h) => `<li>${e(h)}</li>`).join("");
+  $("an-toc").innerHTML = R.sections.map((s) =>
+    `<a href="#sec-${e(s.key)}"><span class="dot s-${e(s.level)}" aria-hidden="true"></span>${e(s.title)}</a>`).join("");
+  const maxV = Math.max(1, ...R.levers.map((l) => l.money_year || 0));
+  $("an-levers").innerHTML = R.levers.length ? R.levers.map((l) => `<article class="an-lever">
     <div class="an-lever-head"><h3>${e(l.title)}</h3>
-      <div class="an-lever-num"><b>${l.eur_year ? "~" + PV.num(l.eur_year, 0) + " {{ ccy }}/год" : "стойност: неизвестна"}</b>
-      <span>${l.payback_years ? "окупаемост " + PV.num(l.payback_years, 1) + " г." : PV.num(l.kwh_year, 0) + " kWh/год"}</span></div></div>
-    <div class="meter" role="img" aria-label="${e(PV.num(l.eur_year, 0))} {{ ccy }} на година"><span style="width:${(l.eur_year || 0) / maxEur * 100}%"></span></div>
+      <div class="an-lever-num"><b>${l.money_year ? "~" + PV.num(l.money_year, 0) + " {{ ccy }}/" + PV.t("год") : PV.t("стойност: неизвестна")}</b>
+      <span>${l.payback_years ? PV.t("окупаемост") + " " + PV.num(l.payback_years, 1) + " " + PV.t("г.") : l.kwh_year ? PV.num(l.kwh_year, 0) + " kWh/" + PV.t("год") : ""}</span></div></div>
+    <div class="meter" role="img" aria-label="${e(PV.num(l.money_year || 0, 0))} {{ ccy }} на година"><span style="width:${(l.money_year || 0) / maxV * 100}%"></span></div>
     <p>${e(l.text)}</p>
-    <p class="sub"><b>Кой:</b> ${e(l.who)} · <b>Допускане:</b> ${e(l.assumption)}${l.eur_year ? ` · ${PV.num(l.kwh_year, 0)} kWh/год` : ""}</p>
-  </article>`).join("");
+    <p class="sub"><b>${PV.t("Кой:")}</b> ${e(l.who)} · <b>${PV.t("Допускане:")}</b> ${e(l.assumption)}</p>
+  </article>`).join("") : `<p class="empty">${PV.t("Моделът не предложи лостове.")}</p>`;
+  $("an-sections").innerHTML = R.sections.map(section).join("");
+}
 
-  const Yr = A.year, x = Yr.map((r) => r.month);
-  if (A.estimated_months.length) {
-    const names = ["яну", "фев", "мар", "апр", "май", "юни", "юли", "авг", "сеп", "окт", "ное", "дек"];
-    document.getElementById("year-sub").textContent += `; ${A.estimated_months.map((m) => names[m - 1]).join(", ")} без данни, взети от съседните месеци`;
-  }
+function renderYear(A) {
+  const Yr = A.year;
+  if (!Yr.length) { PV.empty("c-year", "Още няма достатъчно данни за типична година (трябват дни от поне няколко месеца)."); return; }
+  if (A.estimated_months.length) $("year-sub").textContent += `; ${A.estimated_months.map((m) => PV.t(MONTHS[m - 1])).join(", ")} ${PV.t("без данни, взети от съседните месеци")}`;
   PV.chart("c-year", (t) => PV.base(t, {
     legend: PV.barLegend(t), tooltip: PV.tooltip(t, () => "kWh", 0),
-    xAxis: PV.catAxis(t, x), yAxis: PV.valueAxis(t, "kWh"),
+    xAxis: PV.catAxis(t, Yr.map((r) => MONTHS[r.month - 1])), yAxis: PV.valueAxis(t, "kWh"),
     series: [
       PV.stackBar(t, "PV използвано", Yr.map((r) => r.pv), t.pv),
       PV.stackBar(t, "PV изгубено (ограничаване)", Yr.map((r) => r.curtailed), t.seq[1]),
@@ -100,12 +110,44 @@ async function load() {
       PV.line("Внос", Yr.map((r) => r.imp), t.gridImp, { showSymbol: true, lineStyle: { width: 2, color: t.gridImp, type: [6, 4] } }),
     ],
   }));
-  document.getElementById("an-sections").innerHTML = A.sections.map(section).join("");
 }
+
+async function refresh(first) {
+  const A = await PV.api("analysis");
+  const L = A.llm, run = A.run;
+  $("an-form").hidden = !L.ready;
+  const sp = (x) => `<span>${x}</span>`;
+  let msg;
+  if (!L.ready) msg = `${sp(e(L.why || ""))} ${sp("Избери модел в")} <a href="/setup#h-ai">${sp("настройките")}</a>${sp("; дотогава тук има само типичната година.")}`;
+  else if (!run) msg = `${sp("Модел:")} <b>${e(L.model || L.provider)}</b>${sp(". Още няма анализ: натисни „Направи нов анализ“ (отнема от няколко секунди до няколко минути).")}`;
+  else if (run.status === "running") msg = `${sp("Анализът тече, започнат")} ${when(run.created_at)} · <b>${e(run.model || "")}</b>…`;
+  else if (run.status === "error") msg = `${sp("Последният опит не успя")} (${when(run.finished_at)}): ${sp(e(run.error || ""))}`;
+  else msg = `${sp("Анализ от")} ${when(run.finished_at)} · ${sp("данни към")} ${PV.fmtDate(run.as_of)} · ${sp("модел")} <b>${e(run.model || "")}</b>${run.question ? ` · ${sp("въпрос:")} „${e(run.question)}“` : ""}`;
+  $("an-state").innerHTML = msg;
+  $("an-run").disabled = run?.status === "running";
+  const R = run?.status === "done" ? run.result : run?.previous?.result || null;
+  if (run && run.status !== "done" && run.previous) $("an-state").innerHTML += ` ${sp("Показан е предишният анализ от")} ${when(run.previous.finished_at)}.`;
+  renderResult(R);
+  if (first) renderYear(A);
+  clearTimeout(polling);
+  if (run?.status === "running") polling = setTimeout(() => refresh(false), 5000);
+}
+
+$("an-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  $("an-error").textContent = "";
+  try {
+    const res = await fetch("/api/analysis/run", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: $("an-form").question.value || null, language: document.documentElement.lang || null }) });
+    const js = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(js.detail || `Грешка ${res.status}`);
+    await refresh(false);
+  } catch (err) { $("an-error").textContent = err.message; }
+});
 document.addEventListener("DOMContentLoaded", async () => {
   PV.setLoading(true);
-  try { await load(); }
-  catch (err) { document.getElementById("an-sections").innerHTML = `<p class="empty">Анализът не се зареди: ${e(err.message)}</p>`; }
+  try { await refresh(true); }
+  catch (err) { $("an-state").textContent = `Анализът не се зареди: ${err.message}`; }
   finally { PV.setLoading(false); }
 });
 {% endblock %}

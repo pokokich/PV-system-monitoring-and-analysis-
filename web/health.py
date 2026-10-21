@@ -412,6 +412,9 @@ def _lvl(value, watch, bad, higher_is_worse=True):
 
 def status(m, h: dict, now_ts: float) -> dict:
     """Current health per component, each check with its value, level and reason."""
+    if not m.order or "months" not in h:   # a fresh install before the first data
+        return {"as_of": None, "overall": "no_data", "overall_label": LEVEL_LABEL["no_data"], "components": {},
+                "cycles": {"total": None, "per_year": None, "rated": None, "capacity_kwh": None}}
     last = m.order[-1] if m.order else None
     recent = [m.days[d] for d in m.order[-7:]] if m.order else []
     last30 = [m.days[d] for d in m.order[-30:]] if m.order else []
@@ -482,8 +485,8 @@ def status(m, h: dict, now_ts: float) -> dict:
         out[key] = {"label": label, "level": worst, "level_label": LEVEL_LABEL[worst], "checks": checks}
         if LEVEL[worst] > LEVEL[worst_all]:
             worst_all = worst
-    # whole pack: all discharged energy over today's capacity (the owner's choice: the 7 months the
-    # added modules missed do not matter in the long run)
+    # whole pack: all discharged energy over today's capacity (modules added later count from the
+    # start too; over the years the difference fades)
     cap_now = m.days[m.order[-1]]["batt_kwh"] if m.order else None
     dis = lambda days: sum(m.days[d]["dis"] or 0 for d in days)  # noqa: E731
     span = min(len(m.order), 365)

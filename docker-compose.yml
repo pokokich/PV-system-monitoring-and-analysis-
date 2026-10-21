@@ -1,29 +1,36 @@
 services:
   collector:
     build: .
-    image: deyehome
+    image: ${PV_IMAGE:-pvmon}
     restart: unless-stopped
     env_file: .env
     environment:
       DB_PATH: /data/pv.sqlite
+      TZ: ${TZ:-}
     volumes:
       - ./data:/data
       - ./invoices:/invoices:ro
 
-  # Dashboard: reads the same database, never talks to Deye and gets no Deye credentials.
+  # Dashboard: reads the same database; it talks to Deye only to test the access entered in the
+  # first-run setup, which it saves into data/secrets.json (owner-only file) for the collector.
   # It writes only the manual data (goals, scenarios, parameters, tariffs, CAPEX/OPEX, invoices;
   # web/settings.py: an SQLite authorizer refuses every other table). Changes are accepted only
   # from its own pages, and with WRITE_PASSWORD set only after the password (web/security.py).
   web:
     build: .
-    image: deyehome
+    image: ${PV_IMAGE:-pvmon}
     restart: unless-stopped
     command: ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8088"]
     environment:
       DB_PATH: /data/pv.sqlite
-      TZ: Europe/Sofia
+      TZ: ${TZ:-}
       WRITE_PASSWORD: ${WRITE_PASSWORD:-}
       STALE_MINUTES: ${STALE_MINUTES:-45}
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_CLI_COMMAND: ${LLM_CLI_COMMAND:-}
     volumes:
       - ./data:/data
     healthcheck:
@@ -39,12 +46,12 @@ services:
   # Guard: daily consistent backup of the database into BACKUP_DIR (default ./backups) and
   # alerts when data stops coming. Gets no Deye credentials, only the optional alert settings.
   guard:
-    image: deyehome
+    image: ${PV_IMAGE:-pvmon}
     restart: unless-stopped
     command: ["python", "-m", "collector.guard", "run"]
     environment:
       DB_PATH: /data/pv.sqlite
-      TZ: Europe/Sofia
+      TZ: ${TZ:-}
       BACKUP_PATH: /backups
       BACKUP_HOUR: ${BACKUP_HOUR:-3}
       STALE_MINUTES: ${STALE_MINUTES:-45}
@@ -93,10 +100,10 @@ services:
     image: tailscale/tailscale:v1.92.4
     profiles: ["funnel"]
     restart: unless-stopped
-    hostname: ${TS_HOSTNAME:-pv-home}
+    hostname: ${TS_HOSTNAME:-pvmon}
     environment:
       TS_AUTHKEY: ${TS_AUTHKEY:-}
-      TS_HOSTNAME: ${TS_HOSTNAME:-pv-home}
+      TS_HOSTNAME: ${TS_HOSTNAME:-pvmon}
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: "true"
       TS_SERVE_CONFIG: /config/serve.json

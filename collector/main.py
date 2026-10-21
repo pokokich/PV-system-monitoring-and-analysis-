@@ -15,10 +15,11 @@ import json
 import logging
 import os
 import random
+import threading
 import time
 from datetime import date, datetime, timedelta
 
-from . import appconf, energy, external, store
+from . import appconf, energy, external, secrets, store
 from .db import MetricCache, connect, get_state, log_ingest, save_raw, set_state
 from .deye_client import DeyeApiError, DeyeClient, DeyeConfig, load_env
 
@@ -289,24 +290,74 @@ class Collector:
         today = local_now.date()
         if local_now.hour < 1 or get_state(self.db, "daily_job_day") == today.isoformat():
             return
-        self.fetch_daily_totals(today - timedelta(days=3), today - timedelta(days=1), "daily")
+        # from the last stored day when the computer was off for a while, at least the last 3 days
+        row = self.db.execute("SELECT max(day) FROM deye_daily WHERE station_id = ?", (self.station_id,)).fetchone()
+        first = today - timedelta(days=3)
+        if row and row[0]:
+            first = max(min(first, date.fromisoformat(row[0])), today - timedelta(days=DEVICE_HISTORY_DAYS))
+        self.fetch_daily_totals(first, today - timedelta(days=1), "daily")
         self.fetch_monthly_totals(today.replace(day=1) - timedelta(days=1), today, "daily")
         if self.inverter_sn:
             self.fetch_settings("daily")
         set_state(self.db, "daily_job_day", today.isoformat())
         self.db.commit()
 
-    def run(self) -> None:
+    def _secrets_stamp(self) -> float:
+        try:
+            return secrets.path().stat().st_mtime
+        except OSError:
+            return 0.0
+
+    def run(self, stop: threading.Event | None = None) -> None:
+        """Poll until stopped. A change of the Deye access in data/secrets.json (setup or Settings
+        page) is picked up at the next round; a computer that was off catches up through backfill."""
+        stop = stop or threading.Event()
+        stamp = self._secrets_stamp()
         if not get_state(self.db, "backfill_done"):
             self.backfill()
         base = int(os.environ.get("POLL_INTERVAL_SECONDS", "360"))
-        while True:
+        while not stop.is_set():
             try:
+                if self._secrets_stamp() != stamp:
+                    stamp = self._secrets_stamp()
+                    log.info("Deye access changed, signing in again")
+                    self.client = DeyeClient(self._config())
+                    self.discover()
+                self.tz = appconf.timezone(self.db)
                 self.poll()
             except Exception:
                 log.exception("poll failed; retrying next round")
             # 5-7 minutes with a little jitter so polls don't lock onto the logger's phase
-            time.sleep(max(300, base + random.randint(-30, 60)))
+            stop.wait(max(300, base + random.randint(-30, 60)))
+
+
+def wait_for_access(stop: threading.Event | None = None) -> bool:
+    """Block until the Deye access is set (environment, .env or the dashboard's setup)."""
+    stop = stop or threading.Event()
+    told = False
+    while not secrets.deye_ready():
+        if not told:
+            log.warning("no Deye access yet: open the dashboard's setup (/setup) or fill in .env; waiting")
+            told = True
+        if stop.wait(30):
+            return False
+    return True
+
+
+def run_forever(stop: threading.Event | None = None) -> None:
+    """The collector's main loop with restarts, for `run` and the desktop app."""
+    stop = stop or threading.Event()
+    connect(os.environ.get("DB_PATH", "./data/pv.sqlite")).close()   # the dashboard's setup needs the tables
+    while not stop.is_set():
+        if not wait_for_access(stop):
+            return
+        try:
+            c = Collector()
+            c.discover()
+            c.run(stop)
+        except Exception:
+            log.exception("collector stopped; starting again in 5 minutes")
+            stop.wait(300)
 
 
 def main() -> None:
@@ -344,6 +395,10 @@ def main() -> None:
         connect(os.environ.get("DB_PATH", "./data/pv.sqlite"))
         return
 
+    if args.command == "run":
+        load_env()
+        run_forever()
+        return
     c = Collector()
     if args.command == "rebuild":
         for (sid,) in c.db.execute("SELECT id FROM station").fetchall():
@@ -357,8 +412,6 @@ def main() -> None:
         c.backfill()
     elif args.command == "poll":
         c.poll()
-    elif args.command == "run":
-        c.run()
 
 
 if __name__ == "__main__":

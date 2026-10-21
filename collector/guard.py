@@ -15,13 +15,14 @@ import logging
 import os
 import shutil
 import sqlite3
+import threading
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from . import appconf, backup, notify
+from . import appconf, backup, notify, secrets
 from .db import connect, get_state, set_state
 
 log = logging.getLogger("guard")
@@ -57,7 +58,9 @@ def assess(conn: sqlite3.Connection, now: float | None = None, db_path: str | No
     out = []
 
     last = conn.execute("SELECT max(ts) FROM station_frame").fetchone()[0]
-    if last is None or now - last > stale_s:
+    if last is None and not secrets.deye_ready():
+        out.append({"code": "no_access", "level": "warn", "text": "Още няма достъп до Deye: довърши първоначалната настройка (/setup)"})
+    elif last is None or now - last > stale_s:
         out.append({"code": "data_stale", "level": "bad",
                     "text": "Няма данни от колектора" if last is None else f"Няма нови данни от Deye от {_ago(now - last)}"})
     else:
@@ -233,16 +236,17 @@ class Guard:
         set_state(self.conn, "guard_status", json.dumps(prev, ensure_ascii=False))
         self.conn.commit()
 
-    def run(self) -> None:
+    def run(self, stop: threading.Event | None = None) -> None:
+        stop = stop or threading.Event()
         log.info("guard: backups to %s, alert channels: %s", self.dest, ", ".join(notify.configured()) or "none")
-        while True:
+        while not stop.is_set():
             try:
                 problems = self.check()
                 if problems:
                     log.warning("problems: %s", "; ".join(p["text"] for p in problems))
             except Exception:
                 log.exception("guard check failed")
-            time.sleep(CHECK_EVERY_S)
+            stop.wait(CHECK_EVERY_S)
 
 
 def main() -> None:

@@ -7,16 +7,16 @@
 window.KPI_INFO = {
   // ------------------------------------------------------------ Обзор
   "PV производство": {
-    bg: ["Енергията, която панелите (покрив и навес) са произвели за избрания период.", "Сума от мощността на панелите по 5-минутни интервали от Deye.", "Сравни със „Производство спрямо PVGIS“ на страница Цели."],
-    en: ["Energy produced by the panels (roof and carport) in the selected period.", "Sum of the panel power over 5-minute intervals from Deye.", "Compare with “Production vs. PVGIS” on the Goals page."],
+    bg: ["Енергията, която панелите са произвели за избрания период.", "Сума от мощността на панелите по 5-минутни интервали от Deye.", "Сравни със „Производство спрямо PVGIS“ на страница Цели."],
+    en: ["Energy produced by the panels in the selected period.", "Sum of the panel power over 5-minute intervals from Deye.", "Compare with “Production vs. PVGIS” on the Goals page."],
   },
   "Консумация на дома": {
-    bg: ["Целият ток, който домът е изразходвал, независимо откъде е дошъл: панели, батерия или мрежа.", "Сума от товара по 5-минутни интервали; за декември–март е добавен и токът, който електромерът отчита, а Deye не вижда.", "Нощното зареждане на Теслата е голяма част от нея."],
-    en: ["All electricity the home used, wherever it came from: panels, battery or grid.", "Sum of the load over 5-minute intervals; for December–March the energy the utility meter saw but Deye did not is added.", "Night charging of the Tesla is a large part of it."],
+    bg: ["Целият ток, който домът е изразходвал, независимо откъде е дошъл: панели, батерия или мрежа.", "Сума от товара по 5-минутни интервали. Където има фактура и електромерът отчита повече от Deye, разликата се добавя.", "Големи товари (електромобил, бойлер, термопомпа) я определят."],
+    en: ["All electricity the home used, wherever it came from: panels, battery or grid.", "Sum of the load over 5-minute intervals. Where an invoice shows more than Deye measured, the difference is added.", "Large loads (EV, water heater, heat pump) drive it."],
   },
   "Импорт от мрежата": {
-    bg: ["Токът, купен от мрежата (Електрохолд).", "По Deye; там, където има фактура, се ползва електромерът.", "Колкото по-малко, толкова по-добре."],
-    en: ["Electricity bought from the grid (Electrohold).", "From Deye; where an invoice exists, the utility meter is used.", "The lower, the better."],
+    bg: ["Токът, купен от мрежата.", "По Deye; там, където има фактура, се ползва електромерът.", "Колкото по-малко, толкова по-добре."],
+    en: ["Electricity bought from the grid.", "From Deye; where an invoice exists, the utility meter is used.", "The lower, the better."],
   },
   "Заряд на батерията": {
     bg: ["Енергията, вкарана в батерията, предимно от излишъка на панелите.", "Сума от мощността на заряд по 5-минутни интервали.", ""],
@@ -33,20 +33,20 @@ window.KPI_INFO = {
 
   // ------------------------------------------------------------ Производство
   "Добив на kWp (специфичен)": {
-    bg: ["Колко kWh е дал всеки киловат инсталирана мощност. Така периоди с различен брой панели се сравняват честно.", "PV производство / инсталирани kWp за всеки ден (21,08 kWp от 09.07.2026).", "В София типично ~1 300–1 400 kWh/kWp за година, ~5–6 на ден през лятото."],
-    en: ["How many kWh each installed kilowatt produced, so periods with a different number of panels compare fairly.", "PV production / installed kWp for each day (21.08 kWp since 09.07.2026).", "Typical in Sofia: ~1,300–1,400 kWh/kWp a year, ~5–6 a day in summer."],
+    bg: ["Колко kWh е дал всеки киловат инсталирана мощност. Така периоди с различен брой панели се сравняват честно.", "PV производство / инсталирани kWp за всеки ден (по датираните записи за панелите).", "Сравни с PVGIS за твоето място на страница Цели (в Централна Европа ~1 000–1 400 kWh/kWp за година)."],
+    en: ["How many kWh each installed kilowatt produced, so periods with a different number of panels compare fairly.", "PV production / installed kWp for each day (from the dated panel records).", "Compare with PVGIS for your location on the Goals page (Central Europe ~1,000–1,400 kWh/kWp a year)."],
   },
   "Пикова PV мощност": {
     bg: ["Най-високата мощност от панелите в периода.", "Максимум от 5-минутните кадри на Deye.", "Над 15 kW не може: това е лимитът на инвертора."],
     en: ["The highest power from the panels in the period.", "Maximum of Deye's 5-minute frames.", "It cannot exceed 15 kW: that is the inverter's limit."],
   },
   "Покрив, специфичен добив": {
-    bg: ["Добивът на kWp на южния покрив (PV1, 11,16 kWp).", "Енергия от PV1 / 11,16 kWp; данни по стрингове има от 22.07.2026.", "Покривът трябва да е над навеса, защото няма сянка."],
-    en: ["Yield per kWp of the south roof (PV1, 11.16 kWp).", "PV1 energy / 11.16 kWp; per-string data exists since 22.07.2026.", "The roof should beat the carport because it has no shade."],
+    bg: ["Добивът на kWp на първия масив (MPPT1).", "Енергия от PV1 / kWp на масива от Настройки; само за дните с данни по стрингове.", "Масивът без сянка и с по-добра посока трябва да е по-високо."],
+    en: ["Yield per kWp of the first array (MPPT1).", "PV1 energy / kWp of the array from Settings; only days with per-string data.", "The array with less shade and better orientation should be higher."],
   },
   "Навес, специфичен добив": {
-    bg: ["Добивът на kWp на навеса (PV2, югозапад, 9,92 kWp).", "Енергия от PV2 / 9,92 kWp; данни по стрингове има от 22.07.2026.", "По-нисък от покрива заради следобедната сянка и посоката."],
-    en: ["Yield per kWp of the carport (PV2, south-west, 9.92 kWp).", "PV2 energy / 9.92 kWp; per-string data exists since 22.07.2026.", "Lower than the roof because of afternoon shade and orientation."],
+    bg: ["Добивът на kWp на втория масив (MPPT2).", "Енергия от PV2 / kWp на масива от Настройки; само за дните с данни по стрингове.", "Разлика от над 10–15% при сходна посока е знак за сянка, замърсяване или повреда."],
+    en: ["Yield per kWp of the second array (MPPT2).", "PV2 energy / kWp of the array from Settings; only days with per-string data.", "A gap above 10–15% with similar orientation points to shade, dirt or a fault."],
   },
   "Инвертор, макс. температура": {
     bg: ["Най-високата температура на радиатора на инвертора (AC страната).", "Максимум от кадрите на Deye; DC температура API-то не дава.", "До ~60 °C е нормално; над 70 °C инверторът намалява мощността."],
@@ -63,12 +63,12 @@ window.KPI_INFO = {
 
   // ------------------------------------------------------------ Батерия
   "Заряд мин. / макс. (SOC)": {
-    bg: ["Най-ниското и най-високото ниво на заряд на батерията в периода (SOC, % от капацитета). Това е измерено, не настройката.", "Минимум и максимум от 5-минутните кадри; под числото е денят на минимума и дали е под минималния SOC от настройките тогава.", "Минимумът обикновено е колкото настройката; по-ниско значи изключение (напр. 15% сутринта на 09.07.2026, преди да се включат модули 5–8). Редовно 100% ускорява стареенето."],
-    en: ["The lowest and highest battery state of charge in the period (SOC, % of capacity). This is measured, not the setting.", "Minimum and maximum of the 5-minute frames; below the number is the day of the minimum and whether it was below the minimum SOC set at the time.", "The minimum is usually the setting; lower means an exception (e.g. 15% on the morning of 09.07.2026, before modules 5–8 were connected). Sitting at 100% often speeds up ageing."],
+    bg: ["Най-ниското и най-високото ниво на заряд на батерията в периода (SOC, % от капацитета). Това е измерено, не настройката.", "Минимум и максимум от 5-минутните кадри; под числото е денят на минимума и дали е под минималния SOC от настройките тогава.", "Минимумът обикновено е колкото настройката; по-ниско значи изключение (напр. при смяна на модули или настройки). Редовно 100% ускорява стареенето."],
+    en: ["The lowest and highest battery state of charge in the period (SOC, % of capacity). This is measured, not the setting.", "Minimum and maximum of the 5-minute frames; below the number is the day of the minimum and whether it was below the minimum SOC set at the time.", "The minimum is usually the setting; lower means an exception (e.g. while modules or settings were changed). Sitting at 100% often speeds up ageing."],
   },
   "Пълни цикли за периода": {
-    bg: ["Колко пъти батерията е разредена изцяло, ако съберем всички частични разреждания.", "Целия разряд в периода / капацитета на целия пакет към края на периода (40,96 kWh от 09.07.2026), както в Обзор и Здраве.", "Батерията е за ~6 000 цикъла; ~130 на година е леко натоварване."],
-    en: ["How many times the battery was fully discharged, adding up all partial discharges.", "All discharge in the period / capacity of the whole pack at the end of the period (40.96 kWh from 09.07.2026), as on Overview and Health.", "The battery is rated for ~6,000 cycles; ~130 a year is a light load."],
+    bg: ["Колко пъти батерията е разредена изцяло, ако съберем всички частични разреждания.", "Целия разряд в периода / капацитета на целия пакет към края на периода, както в Обзор и Здраве.", "LFP батериите обикновено са за ~6 000 цикъла; ~150 на година е леко натоварване."],
+    en: ["How many times the battery was fully discharged, adding up all partial discharges.", "All discharge in the period / capacity of the whole pack at the end of the period, as on Overview and Health.", "LFP batteries are typically rated for ~6,000 cycles; ~150 a year is a light load."],
   },
   "Отдадено / заредено": {
     bg: ["Енергията, която батерията е отдала, и тази, която е получила.", "Суми по 5-минутни интервали.", ""],
@@ -91,12 +91,12 @@ window.KPI_INFO = {
     en: ["The typical time the battery reaches 100%. After that the panels' surplus is lost.", "Median of the first time with SOC ≥ 99%, only on days it filled up.", "The later, the less is lost."],
   },
   "Нощта от батерията": {
-    bg: ["Каква част от нощния ток идва от батерията, а не от мрежата.", "Разряд в нощната тарифа / консумация в нощната тарифа.", "Целта е 80%; Теслата нощем я сваля."],
-    en: ["Share of night-time electricity that comes from the battery rather than the grid.", "Discharge in the night tariff / consumption in the night tariff.", "The goal is 80%; the Tesla charging at night pulls it down."],
+    bg: ["Каква част от нощния ток идва от батерията, а не от мрежата.", "Разряд в нощната тарифа / консумация в нощната тарифа.", "Целта е на страница Цели; нощно зареждане на електромобил я сваля."],
+    en: ["Share of night-time electricity that comes from the battery rather than the grid.", "Discharge in the night tariff / consumption in the night tariff.", "The goal is on the Goals page; charging an EV at night pulls it down."],
   },
   "Макс. температура на батерията": {
-    bg: ["Най-високата температура на батерията; под нея са градусо-часовете над 35 °C.", "Максимум от кадрите на Deye (данни от 22.07.2026).", "Под 35 °C; над това батерията старее по-бързо."],
-    en: ["The highest battery temperature; below it, the degree-hours above 35 °C.", "Maximum of Deye's frames (data since 22.07.2026).", "Below 35 °C; above that the battery ages faster."],
+    bg: ["Най-високата температура на батерията; под нея са градусо-часовете над 35 °C.", "Максимум от кадрите на Deye.", "Под 35 °C; над това батерията старее по-бързо."],
+    en: ["The highest battery temperature; below it, the degree-hours above 35 °C.", "Maximum of Deye's frames.", "Below 35 °C; above that the battery ages faster."],
   },
 
   // ------------------------------------------------------------ Потребление и мрежа
@@ -125,8 +125,8 @@ window.KPI_INFO = {
     en: ["Share of produced electricity used at home (directly or via the battery) rather than exported.", "(PV − export) / PV. With zero export it is almost 100%; energy lost because the battery is full shows in “Missed energy”, not here.", ""],
   },
   "Нощно покритие от батерията": {
-    bg: ["Каква част от нощния ток идва от батерията, а не от мрежата.", "Разряд в нощната тарифа / консумация в нощната тарифа.", "Целта е 80%; Теслата нощем я сваля."],
-    en: ["Share of night-time electricity that comes from the battery rather than the grid.", "Discharge in the night tariff / consumption in the night tariff.", "The goal is 80%; the Tesla charging at night pulls it down."],
+    bg: ["Каква част от нощния ток идва от батерията, а не от мрежата.", "Разряд в нощната тарифа / консумация в нощната тарифа.", "Целта е на страница Цели; нощно зареждане на електромобил я сваля."],
+    en: ["Share of night-time electricity that comes from the battery rather than the grid.", "Discharge in the night tariff / consumption in the night tariff.", "The goal is on the Goals page; charging an EV at night pulls it down."],
   },
   "Заряд на батерията от мрежата": {
     bg: ["Токът от мрежата, вкаран в батерията.", "Заряд над PV мощността в същите 5 минути.", "Нормално е близо до 0, освен ако не е настроено зимно зареждане на нощна тарифа."],
@@ -151,8 +151,8 @@ window.KPI_INFO = {
     en: ["The date the cumulative benefit reaches the investment; below are the other two scenarios.", "From the monthly benefit forecast, base scenario.", ""],
   },
   "Сметка преди / след PV": {
-    bg: ["Средната месечна сметка за ток преди и след пускането на системата.", "По фактурите на Електрохолд.", ""],
-    en: ["Average monthly electricity bill before and after the system was commissioned.", "From the Electrohold invoices.", ""],
+    bg: ["Средната месечна сметка за ток преди и след пускането на системата.", "По въведените фактури за ток.", ""],
+    en: ["Average monthly electricity bill before and after the system was commissioned.", "From the electricity invoices entered.", ""],
   },
   "Нетна полза спрямо бизнес плана": {
     bg: ["Докъде е реалната полза спрямо очакваното в бизнес плана за същия период.", "Нетна полза / план за периода (планът е на страница Цели).", "100% и нагоре значи по план."],
@@ -203,8 +203,8 @@ window.KPI_INFO = {
 
   // ------------------------------------------------------------ Здраве
   "Цикли до момента": {
-    bg: ["Колко пълни цикъла е направила батерията от пускането.", "Целия разряд / капацитета на целия пакет (40,96 kWh).", "Батерията е за ~6 000 цикъла."],
-    en: ["How many full cycles the battery has done since commissioning.", "All discharge / capacity of the whole pack (40.96 kWh).", "The battery is rated for ~6,000 cycles."],
+    bg: ["Колко пълни цикъла е направила батерията от пускането.", "Целия разряд / капацитета на целия пакет.", "LFP батериите обикновено са за ~6 000 цикъла."],
+    en: ["How many full cycles the battery has done since commissioning.", "All discharge / capacity of the whole pack.", "LFP batteries are typically rated for ~6,000 cycles."],
   },
   "Здраве на батерията (SOH, модел)": {
     bg: ["Колко от първоначалния капацитет е останал (State of Health). Deye не дава тази стойност, затова е от модел.", "Стареене по време (по-бързо първите 18 месеца), температура, време на 100% и цикли; спрямо номинала с ~3% резерв.", "Над 90% през първите години."],
@@ -227,8 +227,8 @@ window.KPI_INFO = {
     en: ["Hours a day the battery sits at 100% this month.", "Average per day, time with SOC ≥ 99%.", "Less is better: long periods at 100% speed up ageing."],
   },
   "Средна температура на батерията, този месец": {
-    bg: ["Средната температура на батерията този месец.", "От кадрите на Deye; преди 22.07.2026 е оценка по външната температура.", "Около 25 °C е идеално; над 30 °C стареенето се ускорява."],
-    en: ["Average battery temperature this month.", "From Deye's frames; before 22.07.2026 estimated from outdoor temperature.", "About 25 °C is ideal; above 30 °C ageing speeds up."],
+    bg: ["Средната температура на батерията този месец.", "От кадрите на Deye; за дни без данни е оценка по външната температура.", "Около 25 °C е идеално; над 30 °C стареенето се ускорява."],
+    en: ["Average battery temperature this month.", "From Deye's frames; for days without data estimated from outdoor temperature.", "About 25 °C is ideal; above 30 °C ageing speeds up."],
   },
   "Натоварване на батерията": {
     bg: ["Обобщена оценка колко тежки са условията за батерията този месец.", "Комбинира време на 100%, температура, дълбочина на разреждане и мощност на заряд/разряд; 0 е идеално, 100 е много тежко.", "Под 40; от 60 е проблем."],
@@ -251,12 +251,12 @@ window.KPI_INFO = {
     en: ["Hours this month the inverter ran at its 15 kW limit.", "Time with AC power at least 97% of 15 kW.", "Many hours means the panels could deliver more than the inverter lets through."],
   },
   "Прекъсвания на мрежата": {
-    bg: ["Колко пъти е спирал токът от мрежата.", "Кадри, в които и трите фази са под 50 V (от 22.07.2026).", ""],
-    en: ["How many times the grid supply went down.", "Frames where all three phases are below 50 V (since 22.07.2026).", ""],
+    bg: ["Колко пъти е спирал токът от мрежата.", "Кадри, в които и трите фази са под 50 V.", ""],
+    en: ["How many times the grid supply went down.", "Frames where all three phases are below 50 V.", ""],
   },
   "Пренапрежение в мрежата (над 253 V)": {
-    bg: ["Колко пъти напрежението в мрежата е било над допустимото (230 V + 10%).", "5-минутни кадри с напрежение над 253 V на някоя фаза (от 22.07.2026).", "Често пренапрежение е проблем на ЕРМ и може да изключва инвертора."],
-    en: ["How many times the grid voltage was above the limit (230 V + 10%).", "5-minute frames with voltage above 253 V on any phase (since 22.07.2026).", "Frequent overvoltage is the grid operator's problem and can trip the inverter."],
+    bg: ["Колко пъти напрежението в мрежата е било над допустимото (230 V + 10%).", "5-минутни кадри с напрежение над 253 V на някоя фаза.", "Често пренапрежение е проблем на мрежовия оператор и може да изключва инвертора."],
+    en: ["How many times the grid voltage was above the limit (230 V + 10%).", "5-minute frames with voltage above 253 V on any phase.", "Frequent overvoltage is the grid operator's problem and can trip the inverter."],
   },
 
   // ------------------------------------------------------------ Качество на данните
@@ -283,8 +283,8 @@ window.KPI_INFO = {
 
   // ------------------------------------------------------------ Настройки
   "Фактури": {
-    bg: ["Колко фактури на Електрохолд са въведени и за какъв период.", "", "Без пропуски между периодите."],
-    en: ["How many Electrohold invoices are entered and for which period.", "", "No gaps between the periods."],
+    bg: ["Колко фактури за ток са въведени и за какъв период.", "", "Без пропуски между периодите."],
+    en: ["How many electricity invoices are entered and for which period.", "", "No gaps between the periods."],
   },
   "Средна сметка преди PV": {
     bg: ["Средната месечна сметка преди системата.", "По последните фактури преди пускането.", ""],

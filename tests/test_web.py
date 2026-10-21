@@ -195,16 +195,94 @@ class DashboardTests(unittest.TestCase):
         self.assertLessEqual(f["soh_now"], 100)
         self.assertGreaterEqual(f["soh_now"], f["cells_now"])
 
-    def test_analysis(self):
+    def test_analysis_without_model_is_empty(self):
         a = self.client.get("/api/analysis").json()
         self.assertEqual(a["as_of"], self.client.get("/api/meta").json()["last_day"])
-        keys = [s["key"] for s in a["sections"]]
-        self.assertEqual(keys, ["system", "pv", "inverter", "battery", "load", "economics", "data"])
-        for s in a["sections"]:
-            for f in s["findings"]:
-                self.assertIn(f["level"], ("good", "watch", "bad", "no_data"))
-                self.assertTrue(f["title"] and f["text"])
-        self.assertEqual(len(a["overall"]["pillars"]), 3)
+        self.assertFalse(a["llm"]["ready"])
+        r = self.client.post("/api/analysis/run", json={})
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("модел", r.json()["detail"])
+
+    def test_analysis_context_has_no_secrets(self):
+        import json as _json
+        from web import analysis, app as webapp
+        conn = self.data.connect()
+        try:
+            ctx = analysis.context(self.data.model(), conn, webapp.scenarios(), webapp.read_rows("SELECT * FROM goal"), None)
+        finally:
+            conn.close()
+        text = _json.dumps(ctx, ensure_ascii=False)
+        for k in ("system", "periods", "monthly", "goals", "health", "payback_scenarios"):
+            self.assertIn(k, ctx)
+        for secret in ("DEYE_", "password", "appSecret", "invoice_no"):
+            self.assertNotIn(secret, text)
+
+    def test_analysis_with_a_model(self):
+        import time as _time
+        from web import llm
+        answer = ('Here it is: {"overall": {"level": "good", "headline": ["Добре"], "pillars": [{"label": "A", "value": "1", '
+                  '"sub": "", "level": "weird"}]}, "sections": [{"key": "pv x", "title": "Панели", "level": "watch", "summary": "s", '
+                  '"findings": [{"level": "good", "title": "t", "text": "x", "evidence": [{"label": "l", "value": "5", "unit": "%"}]}]}], '
+                  '"levers": [{"title": "b", "money_year": 10}, {"title": "a", "money_year": 50}]}')
+        old_complete, old_ready = llm.complete, llm.ready
+        llm.complete = lambda cfg, system, prompt: (answer, {"input_tokens": 1})
+        llm.ready = lambda cfg: (True, None)
+        try:
+            r = self.client.post("/api/analysis/run", json={"question": "Да купя ли още батерия?"})
+            self.assertEqual(r.status_code, 202, r.text)
+            for _ in range(50):
+                run = self.client.get("/api/analysis").json()["run"]
+                if run["status"] != "running":
+                    break
+                _time.sleep(0.1)
+        finally:
+            llm.complete, llm.ready = old_complete, old_ready
+        self.assertEqual(run["status"], "done", run.get("error"))
+        res = run["result"]
+        self.assertEqual(res["overall"]["pillars"][0]["level"], "no_data")   # unknown level cleaned
+        self.assertEqual(res["sections"][0]["key"], "pvx")
+        self.assertEqual([x["title"] for x in res["levers"]], ["a", "b"])     # biggest first
+        self.assertEqual(run["question"], "Да купя ли още батерия?")
+
+    def test_app_settings(self):
+        s = self.client.get("/api/app-settings").json()
+        self.assertEqual(s["settings"]["currency"], "EUR")
+        self.assertIn(self.client.put("/api/app-settings", json={"currency": "eu1"}).status_code, (400, 422))
+        self.assertEqual(self.client.put("/api/app-settings", json={"timezone": "Mars/Base"}).status_code, 400)
+        bad = {"tariff_night_windows": [{"months": [1, 12], "start": "25:00", "end": "06:00"}]}
+        self.assertEqual(self.client.put("/api/app-settings", json=bad).status_code, 400)
+        r = self.client.put("/api/app-settings", json={"currency": "pln", "site_name": "  Дом  "})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["settings"]["currency"], "PLN")
+        self.assertEqual(r.json()["settings"]["site_name"], "Дом")
+        self.assertIn("zł", self.client.get("/economics").text)
+        self.client.put("/api/app-settings", json={"currency": "EUR", "site_name": None})
+
+    def test_llm_key_is_write_only_and_follows_the_provider(self):
+        import os
+        from collector import secrets
+        os.environ["SECRETS_PATH"] = str(Path(self.tmp.name) / "secrets.json")
+        try:
+            self.client.put("/api/app-settings", json={"llm_provider": "anthropic"})
+            self.assertEqual(self.client.put("/api/secrets/llm", json={"api_key": "sk-test"}).json(), {"has_key": True})
+            s = self.client.get("/api/app-settings").text
+            self.assertNotIn("sk-test", s)
+            self.assertEqual(oct(Path(os.environ["SECRETS_PATH"]).stat().st_mode & 0o777), "0o600")
+            # a new address must not receive the old key
+            self.client.put("/api/app-settings", json={"llm_base_url": "https://example.org"})
+            self.assertIsNone(secrets.get("LLM_API_KEY"))
+            self.assertEqual(self.client.put("/api/app-settings", json={"llm_provider": "nope"}).status_code, 400)
+        finally:
+            self.client.put("/api/app-settings", json={"llm_provider": None, "llm_base_url": None, "llm_model": None})
+            os.environ.pop("SECRETS_PATH")
+
+    def test_setup_page(self):
+        r = self.client.get("/setup")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Deye Cloud", r.text)
+        bad = {"email": "a@b.c", "password": "x", "app_id": "1", "app_secret": "2", "region": "custom",
+               "base_url": "https://evil.example.com/v1.0"}
+        self.assertEqual(self.client.post("/api/setup/deye", json=bad).status_code, 400)
 
     def test_write_connection_only_touches_goal_tables(self):
         from web import settings
@@ -355,10 +433,15 @@ class DashboardTests(unittest.TestCase):
             self.client.cookies.clear()
             self.assertTrue(self.client.get("/api/login").json()["password_set"])
 
-    def test_dashboard_never_calls_deye(self):
+    def test_dashboard_calls_deye_only_to_test_the_setup(self):
         root = Path(__file__).resolve().parents[1] / "web"
         for py in root.rglob("*.py"):
             text = py.read_text(encoding="utf-8")
+            if py.name == "setup.py":   # sign-in and the station list, through the read-only client
+                calls = {c for c in ("station_list", "station_latest", "device_latest", "device_history", "device_config")
+                         if f".{c}(" in text}
+                self.assertEqual(calls, {"station_list"})
+                continue
             self.assertNotIn("deye_client", text, py)
             self.assertNotIn("deyecloud", text, py)
 
