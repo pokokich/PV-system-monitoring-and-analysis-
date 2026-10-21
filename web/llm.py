@@ -107,12 +107,17 @@ def _openai(cfg: dict, system: str, prompt: str) -> tuple[str, dict]:
 
 def _cli(cfg: dict, system: str, prompt: str) -> tuple[str, dict]:
     try:
+        # run in the data folder, not in whatever folder the app started from (on macOS that can mean a
+        # permission prompt for Desktop or Documents when a tool like Claude Code looks around)
+        cwd = os.path.dirname(os.path.abspath(os.environ.get("DB_PATH", "./data/pv.sqlite")))
         res = subprocess.run(shlex.split(cfg["cli_command"]), input=f"{system}\n\n{prompt}", capture_output=True,
-                             text=True, timeout=TIMEOUT_S)
+                             text=True, timeout=TIMEOUT_S, cwd=cwd if os.path.isdir(cwd) else None)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise LlmError(f"Командата не тръгна: {exc}") from None
     if res.returncode != 0:
-        raise LlmError(f"Командата завърши с код {res.returncode}: {res.stderr[-800:]}")
+        # some tools (Claude Code among them) print their error on stdout
+        detail = (res.stderr.strip() or res.stdout.strip())[-800:]
+        raise LlmError(f"Командата завърши с код {res.returncode}: {detail}")
     return res.stdout, {}
 
 

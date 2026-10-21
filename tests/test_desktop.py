@@ -67,5 +67,16 @@ class EnvFileTests(unittest.TestCase):
                     os.environ.pop(k, None)
 
 
+class CliModelTests(unittest.TestCase):
+    def test_error_printed_on_stdout_is_shown(self):
+        import shlex
+        import sys
+        from web import llm
+        cmd = f"{shlex.quote(sys.executable)} -c \"print('Not logged in'); raise SystemExit(1)\""
+        with self.assertRaises(llm.LlmError) as ctx:
+            llm._cli({"cli_command": cmd}, "s", "p")
+        self.assertIn("Not logged in", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
