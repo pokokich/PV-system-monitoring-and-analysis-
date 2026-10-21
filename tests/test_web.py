@@ -299,6 +299,24 @@ class DashboardTests(unittest.TestCase):
             os.environ.pop("SECRETS_PATH")
             self.client.put("/api/app-settings", json={k: v for k, v in before.items() if v not in (None, [])})
 
+    def test_coordinates_from_deye_fill_only_what_is_missing(self):
+        from web import setup
+        conn = sqlite3.connect(self.data.DB_PATH)
+        saved = conn.execute("SELECT key, valid_from, value, unit, note FROM param WHERE key IN ('site_lat', 'site_lon')").fetchall()
+        conn.execute("DELETE FROM param WHERE key IN ('site_lat', 'site_lon')")
+        conn.commit()
+        try:
+            setup._fill_from_deye([{"id": 1, "name": "x", "locationLat": 42.8, "locationLng": 23.4}])
+            loc = self.client.get("/api/app-settings").json()["location"]
+            self.assertEqual((loc["lat"], loc["lon"]), (42.8, 23.4))
+            setup._fill_from_deye([{"id": 1, "locationLat": 10.0, "locationLng": 10.0}])   # never overwrites
+            self.assertEqual(self.client.get("/api/app-settings").json()["location"]["lat"], 42.8)
+        finally:
+            conn.execute("DELETE FROM param WHERE key IN ('site_lat', 'site_lon')")
+            conn.executemany("INSERT INTO param (key, valid_from, value, unit, note) VALUES (?, ?, ?, ?, ?)", saved)
+            conn.commit()
+            conn.close()
+
     def test_setup_page(self):
         r = self.client.get("/setup")
         self.assertEqual(r.status_code, 200)
