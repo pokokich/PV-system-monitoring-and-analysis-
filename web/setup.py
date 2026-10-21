@@ -217,3 +217,20 @@ def setup_deye(x: DeyeIn):
                     "DEYE_APP_SECRET": cfg.app_secret, "DEYE_BASE_URL": base})
     return {"ok": True, "stations": [{"id": s.get("id"), "name": s.get("name"), "kwp": s.get("installedCapacity")}
                                      for s in stations]}
+
+
+@router.post("/api/setup/reset")
+def setup_reset():
+    """Start the setup over: forget the Deye access, the AI key and the general settings. The collected
+    data and the dated records of Settings (panels, battery, prices, CAPEX, invoices, goals) stay."""
+    secrets.update({k: None for k in secrets.DEYE_KEYS + secrets.LLM_KEYS if not secrets.from_env(k)})
+
+    def fn(c):
+        c.executemany("DELETE FROM app_setting WHERE key = ?", [(k,) for k in SETTING_KEYS])
+    settings.write(fn)
+    conn = data.connect()
+    try:
+        data.TZ.set(appconf.timezone(conn))
+    finally:
+        conn.close()
+    return get_app_settings()

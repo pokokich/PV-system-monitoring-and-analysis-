@@ -78,15 +78,16 @@ PAGES = [
     ("health", "/health", "Здраве"),
     ("goals", "/goals", "Цели"),
     ("analysis", "/analysis", "Анализ"),
+    ("setup", "/setup", "Първоначална настройка"),
     ("settings", "/settings", "Настройки"),
 ]
 # Sidebar groups and icons by page key; a new page needs only its line in PAGES (unknown keys go to "Анализ").
 NAV_GROUPS = ("Наблюдение", "Анализ", "Система")
 NAV_GROUP = {"overview": "Наблюдение", "production": "Наблюдение", "battery": "Наблюдение", "grid": "Наблюдение",
              "economics": "Анализ", "goals": "Анализ", "health": "Анализ", "analysis": "Анализ",
-             "quality": "Система", "settings": "Система"}
+             "quality": "Система", "setup": "Система", "settings": "Система"}
 NAV_ICON = {"overview": "home", "production": "sun", "battery": "battery", "grid": "plug", "economics": "money",
-            "goals": "target", "health": "pulse", "analysis": "chart", "quality": "shield", "settings": "sliders"}
+            "goals": "target", "health": "pulse", "analysis": "chart", "quality": "shield", "setup": "plug", "settings": "sliders"}
 
 
 def nav() -> list[tuple[str, list[tuple[str, str, str, str]]]]:
