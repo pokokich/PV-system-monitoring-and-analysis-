@@ -12,6 +12,8 @@ same guard as every other change (same origin, WRITE_PASSWORD when set).
 from __future__ import annotations
 
 import json
+import os
+from datetime import datetime, timezone
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -46,6 +48,7 @@ def get_app_settings():
         cfg = llm.config(conn)
         site = conn.execute("SELECT key, value FROM param WHERE key IN ('site_lat', 'site_lon') ORDER BY valid_from").fetchall()
         tz_now = appconf.timezone(conn).key
+        stn = conn.execute("SELECT name, installed_kwp, start_operating_ts FROM station ORDER BY updated_at DESC LIMIT 1").fetchone()
     finally:
         conn.close()
     try:
@@ -58,6 +61,8 @@ def get_app_settings():
         "settings": {k: st.get(k) for k in SETTING_KEYS if k != "tariff_night_windows"} | {"tariff_night_windows": windows},
         "timezone_effective": tz_now,
         "location": {"lat": loc.get("site_lat"), "lon": loc.get("site_lon")},
+        "station": {"name": " ".join((stn[0] or "").split()) or None, "kwp": stn[1],
+                    "since": datetime.fromtimestamp(stn[2], timezone.utc).date().isoformat() if stn[2] else None} if stn else None,
         "tariff_presets": tariffs.PRESETS,
         "currencies": appconf.CURRENCY_SYMBOLS,
         "llm": {"provider": cfg["provider"], "model": cfg["model"], "base_url": cfg["base_url"], "has_key": cfg["has_key"],
@@ -215,8 +220,25 @@ def setup_deye(x: DeyeIn):
         raise HTTPException(400, "Входът работи, но в този акаунт няма станции")
     secrets.update({"DEYE_EMAIL": cfg.email, "DEYE_PASSWORD": cfg.password, "DEYE_APP_ID": cfg.app_id,
                     "DEYE_APP_SECRET": cfg.app_secret, "DEYE_BASE_URL": base})
+    _fill_from_deye(stations)
     return {"ok": True, "stations": [{"id": s.get("id"), "name": s.get("name"), "kwp": s.get("installedCapacity")}
                                      for s in stations]}
+
+
+def _fill_from_deye(stations: list[dict]) -> None:
+    """Right after the access works: the station's coordinates, so the setup page shows them at once
+    (the collector stores the station itself at its next start). Coordinates the owner entered are kept."""
+    wanted = os.environ.get("DEYE_STATION_ID")
+    st = next((s for s in stations if not wanted or str(s.get("id")) == wanted), None)
+    if not st or not st.get("id"):
+        return
+
+    def fn(c):
+        for key, v in (("site_lat", st.get("locationLat")), ("site_lon", st.get("locationLng"))):
+            if v not in (None, "", 0) and c.execute("SELECT 1 FROM param WHERE key = ?", (key,)).fetchone() is None:
+                c.execute("INSERT INTO param (key, valid_from, value, unit, note) VALUES (?, '2000-01-01', ?, '°', ?)",
+                          (key, float(v), "координати на станцията в Deye"))
+    settings.write(fn)
 
 
 @router.post("/api/setup/reset")

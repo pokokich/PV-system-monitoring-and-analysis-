@@ -72,7 +72,7 @@
         <label>Ширина (°) <input name="lat" type="number" step="0.0001" min="-90" max="90"></label>
         <label>Дължина (°) <input name="lon" type="number" step="0.0001" min="-180" max="180"></label>
       </div>
-      <p class="field-hint">Сумите не се превалутират: въвеждай цени и разходи във валутата, която избереш. Мястото идва от Deye, ако е въведено там; трябва за PVGIS и времето.</p>
+      <p class="field-hint">Сумите не се превалутират: въвеждай цени и разходи във валутата, която избереш. Мястото и името се попълват от Deye при свързването, а часовата зона от браузъра; провери ги и натисни „Запази“. Мястото трябва за PVGIS и времето.</p>
       <h3>Нощна тарифа</h3>
       <label>Тип <select id="tariff-preset">
         <option value="single">единна тарифа (без нощна)</option>
@@ -180,6 +180,7 @@ async function load() {
   // general
   const f = $("gen-form");
   f.site_name.value = st.site_name || "";
+  if (S.station?.name) f.site_name.placeholder = S.station.name;
   f.currency.value = st.currency || "EUR";
   f.timezone.value = st.timezone || "";
   f.timezone.placeholder = S.timezone_effective;
@@ -208,8 +209,12 @@ async function load() {
   if (set) {
     const n = (t) => (set.tables?.[t]?.rows || []).length;
     const parts = [["Панели", n("pv_array")], ["Батерия", n("battery_config")], ["Тарифи", n("tariff")], ["CAPEX", n("capex_item")]];
-    state($("sys-state"), parts.every(([, c]) => c), parts.map(([k, c]) => `${PV.t(k)}: ${c ? c + " " + PV.t("записа") : PV.t("няма записи")}`).join(" · "));
+    const stn = S.station ? `<span>От Deye:</span> <b>${PV.num(S.station.kwp, 2)} kWp</b>${S.station.since ? ` · <span>работи от</span> ${e(S.station.since)}` : ""}.<br>` : "";
+    state($("sys-state"), parts.every(([, c]) => c), stn + parts.map(([k, c]) => `${PV.t(k)}: ${c ? c + " " + PV.t("записа") : PV.t("няма записи")}`).join(" · "));
   }
+}
+function browserTz() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (err) { return ""; }
 }
 function aiFields() {
   const p = $("ai-provider").value, info = S.llm.providers[p];
@@ -228,6 +233,9 @@ $("deye-form").addEventListener("submit", async (ev) => {
   try {
     const r = await send("POST", "setup/deye", body);
     $("deye-form").reset();
+    // what Deye does not give: the time zone, taken from this browser when none is set yet
+    const tz = browserTz();
+    if (!S.settings.timezone && tz) await send("PUT", "app-settings", { timezone: tz }).catch(() => null);
     await load();
     $("deye-state").innerHTML += `<br><span>Станции:</span> <b>${r.stations.map((s) => e(s.name) + (s.kwp ? ` (${PV.num(s.kwp, 2)} kWp)` : "")).join(", ")}</b>. <span>Събирането започва до минута и изтегля историята, която Deye пази (около 90 дни за 5-минутните данни).</span>`;
   } catch (err) { $("deye-error").textContent = err.message; }
