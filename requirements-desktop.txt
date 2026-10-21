@@ -4,4 +4,6 @@ pystray==0.19.5
 pillow==11.3.0
 # Windows has no system time zone database; zoneinfo needs this one.
 tzdata==2025.2
+# CA certificates for HTTPS in the packaged app (it has no system store of its own)
+certifi==2025.10.5
 pyinstaller==6.16.0
