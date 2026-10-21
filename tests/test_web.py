@@ -267,7 +267,8 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(self.client.put("/api/secrets/llm", json={"api_key": "sk-test"}).json(), {"has_key": True})
             s = self.client.get("/api/app-settings").text
             self.assertNotIn("sk-test", s)
-            self.assertEqual(oct(Path(os.environ["SECRETS_PATH"]).stat().st_mode & 0o777), "0o600")
+            if os.name == "posix":  # Windows has no mode bits; %APPDATA% is per user
+                self.assertEqual(oct(Path(os.environ["SECRETS_PATH"]).stat().st_mode & 0o777), "0o600")
             # a new address must not receive the old key
             self.client.put("/api/app-settings", json={"llm_base_url": "https://example.org"})
             self.assertIsNone(secrets.get("LLM_API_KEY"))

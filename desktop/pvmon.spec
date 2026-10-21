@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import collect_submodules
 ROOT = Path(SPECPATH).parent
 datas = [(str(ROOT / "web" / "templates"), "web/templates"), (str(ROOT / "web" / "static"), "web/static"),
          (str(ROOT / "migrations"), "migrations")]
-hidden = collect_submodules("uvicorn") + collect_submodules("web") + collect_submodules("collector") + ["pystray"]
+hidden = collect_submodules("uvicorn") + collect_submodules("web") + collect_submodules("collector") + ["pystray"] + collect_submodules("tzdata")
 
 a = Analysis([str(ROOT / "desktop" / "launch.py")], pathex=[str(ROOT)], datas=datas, hiddenimports=hidden,
              excludes=["tkinter", "pytest"], noarchive=False)
