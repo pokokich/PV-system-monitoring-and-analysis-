@@ -1480,7 +1480,7 @@ window.I18N_EN = {
 "Готово:": "Ready:",
 "ключът е запазен": "the key is saved",
 "Още не е готово: провери модела и ключа.": "Not ready yet: check the model and the key.",
-"За команда на компютъра задай LLM_CLI_COMMAND в .env (напр. claude -p) и рестартирай.": "For a command on this computer set LLM_CLI_COMMAND in .env (e.g. claude -p) and restart.",
+"За команда на компютъра добави ред LLM_CLI_COMMAND=claude -p във файла .env (десктоп приложението: в папката с данните, отваря се от менюто на иконата; Docker: до docker-compose.yml) и рестартирай.": "For a command on this computer add the line LLM_CLI_COMMAND=claude -p to the .env file (desktop app: in the data folder, opened from the icon's menu; Docker: next to docker-compose.yml) and restart.",
 "Станции:": "Stations:",
 "Събирането започва до минута и изтегля историята, която Deye пази (около {0} дни за {1}-минутните данни).": "Collection starts within a minute and downloads the history Deye keeps (about {0} days of {1}-minute data).",
 "Попълни формата само ако искаш да го смениш.": "Fill in the form only if you want to change it.",

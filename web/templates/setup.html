@@ -202,7 +202,7 @@ async function load() {
   sel.disabled = a.pinned.provider; $("ai-model").disabled = a.pinned.model; $("ai-url").disabled = a.pinned.base_url; $("ai-key").disabled = a.pinned.api_key;
   aiFields();
   state($("ai-state"), a.ready, a.ready ? `${sp("Готово:")} <b>${e(a.providers[a.provider].label)}${a.model ? " · " + e(a.model) : ""}</b>${a.has_key ? " · " + sp("ключът е запазен") : ""}.`
-    : a.provider === "cli" && !a.cli_command ? sp("За команда на компютъра задай LLM_CLI_COMMAND в .env (напр. claude -p) и рестартирай.")
+    : a.provider === "cli" && !a.cli_command ? sp("За команда на компютъра добави ред LLM_CLI_COMMAND=claude -p във файла .env (десктоп приложението: в папката с данните, отваря се от менюто на иконата; Docker: до docker-compose.yml) и рестартирай.")
     : a.provider ? sp("Още не е готово: провери модела и ключа.") : sp("AI анализът е изключен."));
   // system
   const set = await PV.api("settings").catch(() => null);

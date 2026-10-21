@@ -123,7 +123,7 @@ analysis*), optionally with a question; the last answer stays on the page.
 | Claude API (Anthropic) | API key from console.anthropic.com; model, e.g. `claude-opus-5-5` | paid per use, a run costs cents |
 | OpenAI-compatible | address (`https://api.openai.com/v1`, `https://openrouter.ai/api/v1`, …), key, model | OpenAI, OpenRouter, Mistral, Groq… |
 | Local model | address `http://localhost:11434/v1` (Ollama) or LM Studio's, model e.g. `llama3.1`; no key | free, private; needs a capable computer |
-| Command on this computer | `LLM_PROVIDER=cli` and `LLM_CLI_COMMAND="claude -p"` (or `ollama run llama3.1`) in `.env` | the command gets the prompt on stdin; it can only be set in `.env`, never from the web page |
+| Command on this computer | `LLM_PROVIDER=cli` and `LLM_CLI_COMMAND="claude -p"` (or `ollama run llama3.1`) in `.env` (desktop app: the `.env` in its data folder) | the command gets the prompt on stdin; it can only be set in `.env`, never from the web page |
 
 What is sent: your system description from Settings, KPIs for the last 30 days, last 365 days and since commissioning,
 monthly totals (up to 24 months), the typical year, goals, health checks and payback scenarios. What is **never** sent:
