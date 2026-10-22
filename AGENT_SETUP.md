@@ -12,6 +12,12 @@ You are installing **PV Monitor** (https://github.com/pokokich/PV-system-monitor
 monitoring and analysis dashboard for Deye solar inverters. Follow these steps in order. Ask the owner only for the items
 under *What you provide*; do everything else yourself.
 
+### Check first that it fits
+
+PV Monitor fits when the owner has a **Deye** inverter that reports to **Deye Cloud** and wants monitoring and analysis
+on their own computer. It does not fit if they want to control the inverter (it is read-only by design), read it locally
+over Modbus/RS485, or use another brand's cloud. Tell the owner this before installing.
+
 ### Hard rules
 
 1. **Read-only towards the inverter.** Never call Deye control endpoints, never write inverter or battery settings, never
