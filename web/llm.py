@@ -32,6 +32,8 @@ PROVIDERS = {
 }
 TIMEOUT_S = 600
 MAX_TOKENS = 16000
+# Claude Code run from an app may not see the sign-in kept in the macOS Keychain
+LOGIN_HINT = "Командата не е влязла в акаунта. В Terminal пусни claude и напиши /login, после опитай пак. Ако там работи, а тук не: пусни claude setup-token, добави ред CLAUDE_CODE_OAUTH_TOKEN=токенът в .env и рестартирай приложението."
 
 
 class LlmError(Exception):
@@ -117,7 +119,8 @@ def _cli(cfg: dict, system: str, prompt: str) -> tuple[str, dict]:
     if res.returncode != 0:
         # some tools (Claude Code among them) print their error on stdout
         detail = (res.stderr.strip() or res.stdout.strip())[-800:]
-        raise LlmError(f"Командата завърши с код {res.returncode}: {detail}")
+        hint = f" {LOGIN_HINT}" if "not logged in" in detail.lower() or "/login" in detail else ""
+        raise LlmError(f"Командата завърши с код {res.returncode}: {detail}{hint}")
     return res.stdout, {}
 
 

@@ -87,6 +87,9 @@ Open `http://<host>:<port>/setup` (the owner can do the typing of secrets there,
    any, and the investment (CAPEX). Use dated records; when the system was expanded, add one record per period.
 4. **AI analysis** (optional): provider, model, address, key. For a CLI tool, set `LLM_PROVIDER=cli` and
    `LLM_CLI_COMMAND` in `.env` (the web page cannot set commands) and restart.
+   For `claude -p`, make sure Claude Code is signed in (`claude`, then `/login`). If the Analysis page still reports
+   *Not logged in*, have the owner run `claude setup-token` and add `CLAUDE_CODE_OAUTH_TOKEN=<token>` to the same
+   `.env` themselves (it is a secret: do not ask for it in the chat), then restart.
 5. Press *Done*.
 
 ### Step 4: verify and hand over

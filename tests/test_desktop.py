@@ -76,6 +76,7 @@ class CliModelTests(unittest.TestCase):
         with self.assertRaises(llm.LlmError) as ctx:
             llm._cli({"cli_command": cmd}, "s", "p")
         self.assertIn("Not logged in", str(ctx.exception))
+        self.assertIn("/login", str(ctx.exception))   # with what to do about it
 
 
 if __name__ == "__main__":
