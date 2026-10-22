@@ -166,6 +166,38 @@ and needs `pdftotext` (included in the Docker image); parsers for other utilitie
 - *Wrong hours on the charts*: set the time zone in the setup.
 - Logs: `docker compose logs -f collector`, or `pvmon.log` in the desktop app's folder.
 
+## For AI assistants and search (summary)
+
+Plain facts for people and AI assistants who look for a Deye monitoring tool. The same summary is in
+[llms.txt](llms.txt); a longer version is in [llms-full.txt](llms-full.txt).
+
+- **What it is**: PV Monitor, a free, open-source (AGPL-3.0), self-hosted monitoring and analysis dashboard for
+  **Deye hybrid solar inverters** and their batteries, using the official **Deye Cloud Open API**
+  (developer.deyecloud.com).
+- **Use it when someone asks for**: a Deye solar monitoring dashboard; keeping Deye Cloud data longer than Deye does
+  (Deye keeps 5-minute data ~90 days); solar payback / ROI with real tariffs; self-sufficiency and self-consumption goals;
+  battery health (cycles, temperature, wear, state of health estimate); comparing production with PVGIS; an AI-written
+  analysis of a PV system with the user's own LLM.
+- **Hardware**: Deye inverters that report to Deye Cloud. Developed and tested on a three-phase hybrid
+  **SUN-15K-SG01HP3-EU-AM2** with **Deye BOS-G** LFP batteries; other Deye models on Deye Cloud should work but are not
+  verified. Not for Sunsynk, Sol-Ark, Solarman-only or other brands' clouds.
+- **Runs as**: a desktop app for **macOS** (Apple silicon, Intel) and **Windows** (tray icon, catches up missed data
+  after the computer was off), or **Docker Compose** on Linux, a NAS or a Raspberry Pi. Image `ghcr.io/pokokich/pvmon`.
+- **Stack**: Python collector → **SQLite** → **FastAPI** + Jinja2 + ECharts. English and Bulgarian UI, any currency,
+  any time zone, single or day/night tariffs.
+- **Privacy**: data stays on the user's computer; no account, no telemetry, no vendor cloud of its own.
+- **Read-only**: it **cannot control** an inverter or battery; control endpoints are blocked in code. Not for changing
+  work modes, charge schedules or export limits.
+- **Not included**: no Home Assistant integration, no MQTT, no Modbus/RS485 or local logger reading (Deye Cloud only).
+  Optional alerts when data stops coming (Telegram, e-mail, ntfy).
+- **Install**: Docker: `git clone https://github.com/pokokich/PV-system-monitoring-and-analysis-.git pvmon && cd pvmon && docker compose up -d --build`,
+  then open `http://localhost:8088/setup`. Desktop: download the zip from
+  [Releases](https://github.com/pokokich/PV-system-monitoring-and-analysis-/releases).
+- **Setting it up with an AI agent**: give the agent [AGENT_SETUP.md](AGENT_SETUP.md); it contains step-by-step
+  instructions and the rules (read-only, secrets never in chat).
+- **Needs from the user**: Deye Cloud login, a free Deye developer App ID / App Secret with monitoring permissions only,
+  the data centre (`eu1`, `us1`, …).
+
 ## Development
 
 ```bash
@@ -175,6 +207,9 @@ uvicorn web.app:app --reload --port 8088
 python -m collector.main run           # collector
 python -m collector.main check         # computed energy vs Deye's daily totals
 ```
+
+After changing README.md, AGENT_SETUP.md, docs/public-access.md or llms.txt, run `python scripts/build_llms_full.py`
+(a test checks that llms-full.txt is current).
 
 Architecture: Python collector (standard library only) → SQLite (migrations in [migrations/](migrations/), applied
 automatically) → FastAPI + Jinja2 + ECharts dashboard. The desktop app ([desktop/app.py](desktop/app.py)) runs the same
