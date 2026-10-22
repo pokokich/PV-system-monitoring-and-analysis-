@@ -125,6 +125,11 @@ analysis*), optionally with a question; the last answer stays on the page.
 | Local model | address `http://localhost:11434/v1` (Ollama) or LM Studio's, model e.g. `llama3.1`; no key | free, private; needs a capable computer |
 | Command on this computer | `LLM_PROVIDER=cli` and `LLM_CLI_COMMAND="claude -p"` (or `ollama run llama3.1`) in `.env` (desktop app: the `.env` in its data folder) | the command gets the prompt on stdin; it can only be set in `.env`, never from the web page |
 
+**Claude Code as the command (`claude -p`).** Install Claude Code and sign in once: run `claude` in a terminal, type
+`/login`, then `/exit`. If the analysis still says *Not logged in* (an app started from Finder may not see the sign-in
+that Claude Code keeps in the macOS Keychain), run `claude setup-token` and add the line
+`CLAUDE_CODE_OAUTH_TOKEN=<the token>` to the same `.env`, then restart the app. The token stays on your computer.
+
 What is sent: your system description from Settings, KPIs for the last 30 days, last 365 days and since commissioning,
 monthly totals (up to 24 months), the typical year, goals, health checks and payback scenarios. What is **never** sent:
 Deye credentials, API keys, invoice numbers or personal data, the exact location (rounded to about 10 km).

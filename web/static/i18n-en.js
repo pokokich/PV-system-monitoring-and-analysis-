@@ -18,6 +18,7 @@ window.I18N_EN = {
 "(текущият месец)": "(current month)",
 "(товар − импорт) / товар": "(load − import) / load",
 "+ Добави": "+ Add",
+"За claude -p: Claude Code трябва да е инсталиран и влязъл в акаунта ти. В Terminal пусни claude и напиши /login. Ако там работи, а анализът пише „Not logged in“, пусни claude setup-token и добави ред CLAUDE_CODE_OAUTH_TOKEN=токенът в същия .env, после рестартирай приложението.": "For claude -p: Claude Code must be installed and signed in to your account. In Terminal run claude and type /login. If it works there but the analysis says “Not logged in”, run claude setup-token and add the line CLAUDE_CODE_OAUTH_TOKEN=your-token to the same .env, then restart the app.",
 "Отнема от няколко секунди до няколко минути; страницата се обновява сама.": "It takes from a few seconds to a few minutes; the page updates by itself.",
 "Анализът тече…": "Analysis running…",
 "Пращам данните към модела…": "Sending the data to the model…",
